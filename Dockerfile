@@ -1,9 +1,13 @@
 FROM oven/bun:1.3.5-alpine
 
-COPY package.json .
+WORKDIR /app
+
+COPY package.json bun.lockb* .
+
+# Install deps
+RUN bun install --frozen-lockfile
+
 COPY knexfile.js .
 COPY ./src ./src
 
-RUN bun install
-
-CMD ["bun", "src/main.js"]
+CMD ["bun", "run", "migrate", "&&", "bun", "src/main.js"]

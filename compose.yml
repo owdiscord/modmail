@@ -1,0 +1,17 @@
+services:
+  modmail:
+    build: .
+    container_name: modmail
+    restart: unless-stopped
+    networks:
+      - zeppelin-prod_default
+    env_file:
+      - .env
+    volumes:
+      - ./config.ini:/app/config.ini:ro
+      - ./attachments:/app/attachments
+      - ./logs:/app/logs
+
+networks:
+  zeppelin-prod_default:
+    external: true
