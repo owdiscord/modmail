@@ -10,4 +10,4 @@ RUN bun install --frozen-lockfile
 COPY knexfile.js .
 COPY ./src ./src
 
-CMD ["bun", "src/main.js"]
+CMD ["bun", "src/index.js"]
