@@ -835,8 +835,13 @@ export class Thread {
   }
 
   async getLatestThreadMessage(): Promise<ThreadMessage> {
+    const types = [
+      ThreadMessageType.FromUser,
+      ThreadMessageType.ToUser,
+      ThreadMessageType.SystemToUser,
+    ];
     const data = await this
-      .db`SELECT * FROM thread_messages WHERE thread_id = ${this.id} AND message_type IN ${[ThreadMessageType.FromUser, ThreadMessageType.ToUser, ThreadMessageType.SystemToUser]} ORDER BY created_at DESC, id DESC`;
+      .db`SELECT * FROM thread_messages WHERE thread_id = ${this.id} AND message_type IN ${this.db(types)} ORDER BY created_at DESC, id DESC LIMIT 1`;
 
     if (data && data.length == 1) return new ThreadMessage(data[0]);
 
@@ -1143,9 +1148,7 @@ export class Thread {
     if (await isBlocked(this.user_id)) return;
 
     const user = await bot.users.fetch(this.user_id);
-    if (user && user.dmChannel) console.log(this);
-
-    const dmChannel = user.dmChannel;
+    const dmChannel = await user.createDM();
     if (!dmChannel) return;
 
     const lastMessageId = (await this.getLatestThreadMessage()).dm_message_id;
@@ -1160,7 +1163,6 @@ export class Thread {
     messages
       .values()
       .toArray()
-      .reverse() // We reverse the array to send the messages in the proper order - Discord returns them newest to oldest
       .filter((msg) => msg.author.id === this.user_id); // Make sure we're not recovering bot or system messages
 
     await this.postSystemMessage(

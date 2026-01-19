@@ -1,6 +1,6 @@
 import type { ModuleProps } from "../plugins";
 import { slugify } from "../utils";
-import { CategoryChannel, GuildChannel } from "discord.js";
+import { ChannelType, GuildChannel } from "discord.js";
 
 export default ({ bot, config, commands }: ModuleProps) => {
   if (!config.allowMove) return;
@@ -18,9 +18,11 @@ export default ({ bot, config, commands }: ModuleProps) => {
       if (!channel || channel.isDMBased() || !(channel instanceof GuildChannel))
         return;
 
-      const channels = await channel.guild.channels.fetch();
+      await channel.guild.channels.fetch();
+      const channels = channel.guild.channels.cache;
       const categories = channels.filter(
-        (c) => c instanceof CategoryChannel && c?.parentId !== channel.parentId,
+        (c) =>
+          c.type === ChannelType.GuildCategory && c.id !== channel.parentId,
       );
 
       if (categories.size === 0) return;
@@ -70,7 +72,7 @@ export default ({ bot, config, commands }: ModuleProps) => {
       }
 
       thread.postSystemMessage(
-        `Thread moved to ${targetCategory.name.toUpperCase()}`,
+        `⇅ Thread moved to **${targetCategory.name.toUpperCase()}**`,
       );
     },
   );

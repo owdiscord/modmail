@@ -360,7 +360,9 @@ export async function createNewThreadForUser(
 
       await guildData.member.fetch();
       if (rolesInThreadHeader && guildData.member.roles.cache.size > 0) {
-        const roles = guildData.member.roles.cache.map((r) => r.name);
+        const roles = guildData.member.roles.cache
+          .map((r) => r.name)
+          .filter((c) => c !== "@everyone");
         headerItems.push(`ROLES **${roles.join(", ")}**`);
       }
 
