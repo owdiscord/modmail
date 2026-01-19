@@ -6,7 +6,7 @@ import { getSelfUrl } from "../utils";
 import { ThreadStatus } from "./constants";
 import type Thread from "./Thread";
 import type ThreadMessage from "./ThreadMessage";
-import { Attachment, AttachmentBuilder } from "discord.js";
+import { AttachmentBuilder } from "discord.js";
 
 const { logStorage, logOptions } = cfg;
 

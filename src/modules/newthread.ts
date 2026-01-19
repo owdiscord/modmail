@@ -10,11 +10,11 @@ export default ({ bot, db, config, commands }: ModuleProps) => {
     "newthread",
     "<userId:userId>",
     async (msg, args, thread) => {
-      if (!msg.channel.isSendable() || !thread) return;
+      if (!msg.channel.isSendable()) return;
 
       const user = await bot.users.fetch(args.userId as string);
       if (!user) {
-        postSystemMessageWithFallback(msg.channel, thread, "User not found!");
+        postSystemMessageWithFallback(msg.channel, null, "User not found!");
         return;
       }
 

@@ -23,7 +23,7 @@ const prefix = config.prefix || "!";
 
 export type CommandHandler = (
   msg: Message,
-  args: Record<string | number | symbol, unknown> & { opts: Array<string> },
+  args: Record<string | number | symbol, unknown>,
   thread?: Thread,
 ) => void;
 
@@ -54,9 +54,8 @@ export class Commands {
     });
 
     bot.on(Events.MessageCreate, async (msg: Message) => {
-      if (msg.author.bot) return;
-      if (msg.author.id === bot.user?.id) return;
-      if (!msg.content) return;
+      if (msg.author.bot || msg.author.id === bot.user?.id || !msg.content)
+        return;
 
       const matchedCommand = await this.manager.findMatchingCommand(
         msg.content,
@@ -118,25 +117,25 @@ export class Commands {
       ...commandConfig,
       aliases,
       preFilters: [
-        async (_, context) => {
-          if (!(await messageIsOnInboxServer(this.bot, context.msg)))
-            return false;
-          if (!isStaff(context.msg.member)) return false;
-          return true;
-        },
+        // async (_, context) => {
+        //   if (!(await messageIsOnInboxServer(this.bot, context.msg)))
+        //     return false;
+        //   if (!isStaff(context.msg.member)) return false;
+        //   return true;
+        // },
       ],
     });
 
     this.handlers[cmd.id] = async (msg: Message, args: any) => {
       const thread = await findOpenThreadByChannelId(this.db, msg.channel.id);
-      handler(msg, args, thread);
+      handler(msg, args, thread || undefined);
     };
   }
 
   public addInboxThreadCommand(
     trigger: string | RegExp,
     parameters: TParseableSignature | undefined,
-    handler: (arg0: any, arg1: any, arg2: Thread) => void,
+    handler: CommandHandler,
     commandConfig: Record<string, any> = {},
   ) {
     const aliases = this.aliasMap.has(trigger)

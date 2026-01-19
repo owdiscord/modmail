@@ -11,11 +11,13 @@ export default ({ config, commands }: ModuleProps) => {
 
       if (args.opt?.startsWith("c")) {
         await thread.removeAlert(msg.author.id);
-        await thread.postSystemMessage("Cancelled new message alert");
+        await thread.postSystemMessage(
+          ":red_circle: Cancelled new message alert",
+        );
       } else {
         await thread.addAlert(msg.author.id);
         await thread.postSystemMessage(
-          `Pinging ${msg.member?.nickname || config.useDisplaynames ? msg.author.globalName || msg.author.username : msg.author.username} when this thread gets a new reply`,
+          `:red_circle: Pinging ${msg.member?.nickname || config.useDisplaynames ? msg.author.globalName || msg.author.username : msg.author.username} when this thread gets a new reply`,
         );
       }
     },

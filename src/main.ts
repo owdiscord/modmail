@@ -286,10 +286,12 @@ function initBaseMessageHandlers(bot: Client) {
        * 1) Find the open modmail thread for this user, or create a new one
        * 2) Post the message as a user reply in the thread
        */
-      const channel = await getOrFetchChannel(bot, msg.channel.id);
       if (msg.author.bot) return;
       if (msg.type !== MessageType.Default && msg.type !== MessageType.Reply)
         return; // Ignore pins etc.
+
+      const channel = await getOrFetchChannel(bot, msg.channel.id);
+      if (!channel || !channel.isSendable()) return;
 
       if (await blocked.isBlocked(msg.author.id)) {
         if (config.blockedReply != null) {
@@ -428,6 +430,9 @@ function initBaseMessageHandlers(bot: Client) {
    * 2) If that message was moderator chatter in the thread, delete it from the database as well
    */
   bot.on(Events.MessageDelete, async (msg) => {
+    const msgThread = await threads.findByChannelId(db, msg.channelId);
+    if (!msgThread && msg.channel.type !== ChannelType.DM) return;
+
     const threadMessage = await threads.findThreadMessageByDMMessageId(
       db,
       msg.id,

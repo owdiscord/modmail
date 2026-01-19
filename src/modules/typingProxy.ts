@@ -1,29 +1,29 @@
-import { Events, GuildChannel } from "discord.js";
+import { ChannelType, Events, GuildChannel } from "discord.js";
 import type { ModuleProps } from "../plugins";
 import { findByChannelId, findOpenThreadByUserId } from "../data/threads";
 import { noop } from "../utils";
 
 export default ({ bot, db, config }: ModuleProps) => {
-  // Typing proxy: forwarding typing events between the DM and the modmail thread
   if (config.typingProxy || config.typingProxyReverse) {
     bot.on(Events.TypingStart, async ({ channel, user }) => {
-      if (!user) {
-        // If the user doesn't exist in the bot's cache, it will be undefined here
-        return;
-      }
+      if (!user) return;
 
       // config.typingProxy: forward user typing in a DM to the modmail thread
       if (config.typingProxy && !(channel instanceof GuildChannel)) {
         const thread = await findOpenThreadByUserId(db, user.id);
-        if (!thread || !channel.isSendable()) return;
+        if (!thread) return;
 
-        await channel.sendTyping().catch(noop);
+        const threadChannel = await bot.channels.fetch(thread.channel_id);
+
+        if (threadChannel && threadChannel.isSendable())
+          await threadChannel.sendTyping().catch(noop);
+        return;
       }
 
       // config.typingProxyReverse: forward moderator typing in a thread to the DM
-      else if (
+      if (
         config.typingProxyReverse &&
-        channel instanceof GuildChannel &&
+        channel.type === ChannelType.GuildText &&
         !user.bot
       ) {
         const thread = await findByChannelId(db, channel.id);

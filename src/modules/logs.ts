@@ -67,15 +67,16 @@ export default ({ bot, db, config, commands, hooks }: ModuleProps) => {
         const formattedLogUrl = logUrl
           ? `<${addOptQueryStringToUrl(logUrl, { verbose: args.verbose || false, simple: args.simple || false })}>`
           : `View log with \`${config.prefix}log ${userThread.thread_number}\``;
-        const formattedDate = utc(userThread.created_at).format(
-          "MMM Do [at] HH:mm [UTC]",
-        );
-        return `\`#${userThread.thread_number}\` \`${formattedDate}\`: ${formattedLogUrl}`;
+
+        const formattedDate = `<t:${Math.round(userThread.created_at.getTime() / 1000)}:S>`;
+        return logUrl
+          ? `• [Thread #${userThread.thread_number || 67}](${formattedLogUrl}) at ${formattedDate}`
+          : `• Thread #${userThread.thread_number || 67} - use \`${config.prefix}log ${userThread.thread_number}\` at ${formattedDate}`;
       }),
     );
 
     let message = isPaginated
-      ? `**Log files for <@${userId}>** (page **${page}/${maxPage}**, showing logs **${start + 1}-${end}/${totalUserThreads}**):`
+      ? `**Log files for <@${userId}>**\n-# Page **${page}/${maxPage}**, showing logs **${start + 1}-${end}/${totalUserThreads}**):`
       : `**Log files for <@${userId}>:**`;
 
     message += `\n${threadLines.join("\n")}`;

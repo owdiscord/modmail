@@ -30,6 +30,7 @@ import {
   type User,
 } from "discord.js";
 import type { SQL } from "bun";
+import config from "../cfg";
 
 const {
   useDisplaynames,
@@ -285,7 +286,7 @@ export async function createNewThreadForUser(
       created_at: new Date(),
       thread_number: 0,
       alert_ids: "",
-      log_storage_type: "",
+      log_storage_type: config.logStorage || "local",
       log_storage_data: {},
       metadata: "{}",
     });
@@ -429,10 +430,12 @@ export async function createThreadInDB(
     lastThreadNumber[0] &&
     lastThreadNumber[0].thread_number
   ) {
-    data.thread_number = lastThreadNumber.thread_number + 1;
+    data.thread_number = lastThreadNumber[0].thread_number + 1;
+  } else {
+    data.thread_number = 1;
   }
 
-  await db`INSERT INTO threads ${db({ ...data, is_legacy: false, thread_number: null })}`;
+  await db`INSERT INTO threads ${db({ ...data, is_legacy: false })}`;
 
   return data.id;
 }
@@ -551,5 +554,7 @@ export async function findThreadMessageByDMMessageId(
 
   if (message && message[0]) return new ThreadMessage(message[0]);
 
-  throw "could not retrieve message";
+  console.log(typeof db, typeof dmMessageId);
+  console.trace();
+  throw `[findThreadMessageByDMMessageId@threads.ts:549] could not retrieve message for dm ${dmMessageId}`;
 }

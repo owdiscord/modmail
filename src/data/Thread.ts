@@ -953,9 +953,9 @@ export class Thread {
     await this.db`UPDATE threads
     SET alert_ids = CASE
       WHEN alert_ids IS NULL THEN ${userId}
-      WHEN alert_ids IS '' THEN ${userId}
+      WHEN LENGTH(alert_ids) = 0 THEN ${userId}
       WHEN FIND_IN_SET(${userId}, alert_ids) > 0 THEN alert_ids
-      ELSE CONCAT(alert_ids, ',${userId}')
+      ELSE CONCAT_WS(${","}, alert_ids, ${userId})
     END
     WHERE id = ${this.id}`;
   }

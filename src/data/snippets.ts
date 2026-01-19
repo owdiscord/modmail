@@ -5,9 +5,11 @@ const db = useDb();
 
 export async function get(trigger: string): Promise<Snippet | null> {
   const snippet =
-    await db`SELECT * FROM snippets WHERE LOWER('trigger') = ${trigger.toLowerCase()} LIMIT 1`;
+    await db`SELECT * FROM snippets WHERE LOWER(\`trigger\`) = ${trigger.toLowerCase()} LIMIT 1`;
 
-  return snippet ? new Snippet(snippet[0]) : null;
+  if (snippet && snippet.length === 1) return new Snippet(snippet[0]);
+
+  return null;
 }
 
 export async function add(trigger: string, body: string, created_by = "") {
@@ -17,7 +19,7 @@ export async function add(trigger: string, body: string, created_by = "") {
 }
 
 export async function del(trigger: string) {
-  return await db`DELETE FROM snippets WHERE LOWER('trigger') = ${trigger.toLowerCase()} LIMIT 1`;
+  return await db`DELETE FROM snippets WHERE LOWER(\`trigger\`) = ${trigger.toLowerCase()} LIMIT 1`;
 }
 
 export async function all() {

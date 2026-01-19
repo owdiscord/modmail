@@ -120,12 +120,6 @@ export function isStaff(member: GuildMember | null): boolean {
   });
 }
 
-/**
- * Returns whether the given message is on the inbox server
- * @param {Client} client
- * @param {Message} msg
- * @returns {Promise<boolean>}
- */
 export async function messageIsOnInboxServer(
   client: Client,
   msg: Message,
@@ -139,12 +133,6 @@ export async function messageIsOnInboxServer(
   return true;
 }
 
-/**
- * Returns whether the given message is on the main server
- * @param {Client} client
- * @param {Message} msg
- * @returns {Promise<boolean>}
- */
 export async function messageIsOnMainServer(
   client: Client,
   msg: Message,
@@ -158,11 +146,6 @@ export async function messageIsOnMainServer(
   return getMainGuilds().some((g) => channel.guild!.id === g.id);
 }
 
-/**
- * @param {Attachment} attachment
- * @param {string} attachmentUrl
- * @returns {Promise<string>}
- */
 export async function formatAttachment(
   attachment: Attachment,
   attachmentUrl: string,
@@ -173,11 +156,6 @@ export async function formatAttachment(
   return `**Attachment:** ${attachment.name} (${filesize.toFixed(1)}KB)\n${attachmentUrl}`;
 }
 
-/**
- * Returns the user ID of the user mentioned in str, if any
- * @param {String} str
- * @returns {String|null}
- */
 export function getUserMention(str: string): string | null {
   if (!str) return null;
 
@@ -370,14 +348,15 @@ export function getInboxMentionAllowedMentions(): MessageMentionOptions {
 
 export function postSystemMessageWithFallback(
   channel: SendableChannels,
-  thread: Thread,
+  thread: Thread | null = null,
   text: string,
 ) {
   if (thread) {
     thread.postSystemMessage(text);
-  } else {
-    channel.send(text);
+    return;
   }
+
+  channel.send(text);
 }
 
 /**
@@ -559,29 +538,11 @@ export function chunkMessageLines(str: string, maxChunkLength = 1990) {
   });
 }
 
-const fetchChannelPromises: Record<string, Promise<SendableChannels>> = {};
-
 export async function getOrFetchChannel(
   client: Client,
   channelId: string,
-): Promise<SendableChannels> {
-  const cachedChannel = client.channels.cache.get(channelId);
-  if (cachedChannel) {
-    return cachedChannel as SendableChannels;
-  }
-
-  if (!fetchChannelPromises[channelId]) {
-    fetchChannelPromises[channelId] = (async () => {
-      const channel = (await client.channels.fetch(
-        channelId,
-      )) as SendableChannels;
-      if (!channel) throw "No channel was found";
-
-      return channel;
-    })();
-  }
-
-  return fetchChannelPromises[channelId];
+): Promise<Channel | null> {
+  return client.channels.fetch(channelId);
 }
 
 export function messageContentToAdvancedMessageContent(

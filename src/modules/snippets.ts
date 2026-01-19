@@ -80,10 +80,11 @@ export default ({ bot, db, config, commands }: ModuleProps) => {
     if (!snippetInvoke) return;
 
     const matches = snippetInvoke.match(/(\S+)(?:\s+(.*))?/s);
-    let [, trigger, rawArgs] = matches || ["", "", ""];
-    if (!trigger || !rawArgs) return;
+    if (!matches || matches.length < 2) return;
 
-    trigger = trigger.toLowerCase();
+    let trigger = matches[1];
+    let rawArgs = matches[2] || "";
+    if (!trigger) return;
 
     const snippet = await snippets.get(trigger);
     if (!snippet) return;

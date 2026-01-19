@@ -25,7 +25,12 @@ export default ({ bot, config, commands }: ModuleProps) => {
 
     // Put roles into the cache
     await guild.roles.fetch();
-    guild.roles.cache.find((r) => r.name.toLowerCase() === input.toLowerCase());
+    const res = guild.roles.cache.find(
+      (r) =>
+        r.name.toLowerCase() === input.toLowerCase() ||
+        r.name.toLowerCase().startsWith(input.toLowerCase()),
+    );
+    return res;
   }
 
   // Get display role for a thread
@@ -33,6 +38,8 @@ export default ({ bot, config, commands }: ModuleProps) => {
     "role",
     [],
     async (msg, _args, thread) => {
+      if (!thread || !msg.member) return;
+
       const displayRole = await getModeratorThreadDisplayRoleName(
         msg.member,
         thread.id,
@@ -55,6 +62,8 @@ export default ({ bot, config, commands }: ModuleProps) => {
     "role reset",
     [],
     async (msg, _args, thread) => {
+      if (!thread || !msg.member) return;
+
       await resetModeratorThreadRoleOverride(msg.member.id, thread.id);
 
       const displayRole = await getModeratorThreadDisplayRoleName(
@@ -82,8 +91,10 @@ export default ({ bot, config, commands }: ModuleProps) => {
     "role",
     "<role:string$>",
     async (msg, args, thread) => {
-      const role = await resolveRoleInput(args.role);
-      if (!role || !msg.member.roles.includes(role.id)) {
+      if (!thread || !msg.member) return;
+
+      const role = await resolveRoleInput(args.role as string);
+      if (!role || !msg.member.roles.cache.has(role.id)) {
         thread.postSystemMessage(
           "No matching role found. Make sure you have the role before trying to set it as your display role in this thread.",
         );
@@ -101,7 +112,7 @@ export default ({ bot, config, commands }: ModuleProps) => {
   // Get default display role
   commands.addInboxServerCommand("role", [], async (msg, _args, _thread) => {
     const channel = await getOrFetchChannel(bot, msg.channel.id);
-    if (!msg.member) return;
+    if (!msg.member || !channel || !channel.isSendable()) return;
 
     const displayRole = await getModeratorDefaultDisplayRoleName(msg.member);
     if (displayRole) {
@@ -116,11 +127,11 @@ export default ({ bot, config, commands }: ModuleProps) => {
     "role reset",
     [],
     async (msg, _args, _thread) => {
-      if (!msg.member) return;
+      const channel = await getOrFetchChannel(bot, msg.channel.id);
+      if (!msg.member || !channel || !channel.isSendable()) return;
 
       await resetModeratorDefaultRoleOverride(msg.member.id);
 
-      const channel = await getOrFetchChannel(bot, msg.channel.id);
       const displayRole = await getModeratorDefaultDisplayRoleName(msg.member);
       if (displayRole) {
         channel.send(
@@ -144,7 +155,7 @@ export default ({ bot, config, commands }: ModuleProps) => {
     async (msg: Message, args: Record<string, unknown>, _thread?: Thread) => {
       const channel = await getOrFetchChannel(bot, msg.channel.id);
       const role = await resolveRoleInput(args.role as string);
-      if (!role) return;
+      if (!role || !msg.member || !channel || !channel.isSendable()) return;
 
       const hasRole = msg.member?.roles.resolve(role.id);
 

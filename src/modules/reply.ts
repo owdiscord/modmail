@@ -1,12 +1,12 @@
+import type { ModuleProps } from "../plugins";
 import * as utils from "../utils";
-import type { ModuleProps } from "./modules";
 
 export default ({ config, commands }: ModuleProps) => {
   commands.addInboxThreadCommand(
     "reply",
     "[text$]",
     async (msg, args, thread) => {
-      if (!args.text && msg.attachments.length === 0) {
+      if (!args.text && msg.attachments.size === 0) {
         utils.postError(msg.channel, "Text or attachment required");
         return;
       }

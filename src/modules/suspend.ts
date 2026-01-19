@@ -38,6 +38,7 @@ export default ({ db, config, commands }: ModuleProps) => {
     "suspend cancel",
     [],
     async (_msg, _args, thread) => {
+      if (!thread) return;
       // Cancel timed suspend
       if (thread.scheduled_suspend_at) {
         await thread.cancelScheduledSuspend();
@@ -52,6 +53,7 @@ export default ({ db, config, commands }: ModuleProps) => {
     "suspend",
     "[delay:delay]",
     async (msg, args, thread) => {
+      if (!thread) return;
       if (thread.status === ThreadStatus.Suspended) {
         thread.postSystemMessage("Thread is already suspended.");
         return;
