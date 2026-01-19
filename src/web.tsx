@@ -16,6 +16,17 @@ const db = useDb();
 app.use(cors());
 app.use(secureHeaders());
 
+app.get("/style.css", async (_) => {
+  const attachmentFile = file("./src/web/style.css");
+
+  return new Response(attachmentFile, {
+    headers: {
+      "Content-Type": "text/css",
+    },
+  });
+
+})
+
 app.get("/logs/:id", async (c) => {
   const { id } = c.req.param();
   const thread = await findById(db, id);

@@ -55,6 +55,7 @@ const attachmentStorageTypes: Record<
 
     // Download the attachment
     const downloadResult = await downloadAttachment(attachment);
+    console.log(targetPath, downloadResult.path);
 
     try {
       // Move the temp file to the attachment folder
@@ -91,6 +92,7 @@ export async function downloadAttachment(attachment: Attachment, tries = 0) {
     tmpdir(),
     `attachment-${Date.now()}-${Math.random().toString(36).slice(2)}`,
   );
+  console.log(filepath);
 
   try {
     const response = await fetch(attachment.url);
@@ -193,13 +195,3 @@ export function addStorageType(
 ) {
   attachmentStorageTypes[name] = handler;
 }
-
-// addStorageType("original", passthroughOriginalAttachment);
-// addStorageType("discord", saveDiscordAttachment);
-
-// module.exports = {
-//   getLocalAttachmentPath,
-//   saveAttachment,
-//   addStorageType,
-//   downloadAttachment,
-// };

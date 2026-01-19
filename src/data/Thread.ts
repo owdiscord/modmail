@@ -54,6 +54,7 @@ import {
   type MessageMentionOptions,
   type MessageReference,
   type MessageResolvable,
+  type MessageSnapshot,
   type ReplyOptions,
   type SendableChannels,
 } from "discord.js";
@@ -482,8 +483,17 @@ export class Thread {
     const smallAttachmentLinks = [];
     const attachmentFiles = [];
 
-    for (const [_, attachment] of msg.attachments) {
+    let allMessageAttachments = msg.attachments;
+    if (msg.messageSnapshots.size > 0) {
+      allMessageAttachments = allMessageAttachments.concat(
+        (msg.messageSnapshots.first() as MessageSnapshot).attachments,
+      );
+    }
+
+    for (const [_, attachment] of allMessageAttachments) {
       const savedAttachment = await saveAttachment(attachment);
+
+      console.log(savedAttachment);
 
       // Forward small attachments (<2MB) as attachments, link to larger ones
       if (
@@ -502,10 +512,18 @@ export class Thread {
     }
 
     // Handle forwards
-    if (msg.reference && msg.reference.type == MessageReferenceType.Forward) {
+    if (msg.reference && msg.reference.type === MessageReferenceType.Forward) {
       const forward = msg.messageSnapshots.first()!;
+      let textContent = forward.content;
 
-      messageContent = `*Forwarded message by ${forward.member?.displayName || "unknown user"}:*\n${forward.content}\n <t:${Math.round(forward.createdTimestamp / 1000)}> ${forward.url}`;
+      if (forward.stickers.size > 0) {
+        textContent += forward.stickers
+          .map((sticker) => {
+            return `*Sent sticker "${sticker.name}":* https://media.discordapp.net/stickers/${sticker.id}.webp?size=160`;
+          })
+          .join("\n");
+      }
+      messageContent = `\n\n> -# *↪ Forwarded from ${forward.guild?.name || "direct messages"}*\n> ${textContent}\n> -# [Source](${forward.url})  •  <t:${Math.round(forward.createdTimestamp / 1000)}:f>`;
     }
 
     // Handle replies
@@ -562,6 +580,8 @@ export class Thread {
     }
 
     messageContent = messageContent.trim();
+    if (msg.reference && msg.reference.type === MessageReferenceType.Forward)
+      messageContent = `\n${messageContent}`;
 
     // Save DB entry
     let threadMessage = new ThreadMessage({
