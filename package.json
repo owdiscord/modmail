@@ -8,6 +8,7 @@
 	"scripts": {
 		"start": "bun src/index.js",
 		"dev": "NODE_ENV=development bun src/index.js",
+    "web": "bun --watch src/web.tsx",
 		"watch": "NODE_ENV=development bun --watch src/index.js",
 		"lint": "biome check ./src",
 		"lint-fix": "biome check --write --unsafe ./src",

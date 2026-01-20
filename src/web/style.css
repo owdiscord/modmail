@@ -1,45 +1,109 @@
 @import url("https://fonts.cdnfonts.com/css/gg-sans-2");
 
 :root {
-	--color-gray-800: #323339;
-	--color-gray-700: #3d3e45;
-	--color-gray-100: #dcdddf;
+  --color-gray-800: #323339;
+  --color-gray-700: #3d3e45;
+  --color-gray-600: #46464D;
+  --color-gray-300: #9b9ca3;
+  --color-gray-100: #dcdddf;
 
-	--color-white: #fff;
+  --color-white: #fff;
+  --color-mod: #f86d1d;
+  --color-admin: #4781ff;
+  --color-system: #6a7d91;
 
-	--max-content-width: 700px;
+  --max-content-width: 700px;
 }
 
 body {
-	background-color: var(--color-gray-800);
-	font-family: "gg sans Normal", sans-serif;
-	color: #fff;
-	margin: 0;
+  background-color: var(--color-gray-800);
+  font-family: "gg sans Normal", sans-serif;
+  color: #fff;
+  margin: 0;
 }
 
 .thread-header {
-	margin: 0 auto;
-	padding: 2rem 0;
-	border-bottom: 1px solid var(--color-gray-700);
-	max-width: var(--max-content-width);
+  margin: 0 auto;
+  padding: 2rem 0;
+  border-bottom: 1px solid var(--color-gray-700);
+  max-width: var(--max-content-width);
 
-	& img {
-		border-radius: 100%;
-		width: 5rem;
-		margin-bottom: 0.5rem;
-	}
+  & img {
+    border-radius: 100%;
+    width: 5rem;
+    margin-bottom: 0.5rem;
+  }
 
-	& h1 {
-		font-family: "gg sans Bold", sans-serif;
-		color: var(--color-white);
-		margin: 0;
-		font-size: 2rem;
-		margin-bottom: 0.5rem;
-	}
+  & h1 {
+    font-family: "gg sans SemiBold", sans-serif;
+    font-weight: 600;
+    color: var(--color-white);
+    margin: 0;
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+  }
 
-	& p {
-		margin: 0;
-		font-size: 1rem;
-		color: var(--color-gray-100);
-	}
+  & p {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--color-gray-100);
+  }
+}
+
+.threadMessages {
+  display: grid;
+  list-style: none;
+  padding: 0;
+  max-width: var(--max-content-width);
+  margin: 0 auto;
+
+  & li {
+    padding: .6rem 1rem;
+    display: flex;
+    gap: 1rem;
+  }
+}
+
+.msgAvatar {
+  width: 40px;
+  height: 40px;
+  background: var(--color-gray-700);
+  border-radius: 100%;
+  margin: 0;
+}
+
+.msgHeader {
+  display: flex;
+  align-items: center;
+  gap: 1ch;
+  line-height: 1;
+
+  & p {
+    color: var(--color-mod);
+    font-family: 'gg sans SemiBold', sans-serif;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    margin: 0 0 .3rem;
+  }
+
+  & time {
+    font-size: .8rem;
+    color: var(--color-gray-300);
+  }
+
+  & .typeBadge {
+    background: var(--color-gray-600);
+    border-radius: 4px;
+    color: var(--color-gray-100);
+    font-size: .7rem;
+    font-family: 'gg sans Semibold', sans-serif;
+    font-weight: 600;
+    padding: 2px 6px 2px;
+  }
+}
+
+.msgBody p {
+  margin: 0;
 }
