@@ -1,20 +1,20 @@
 interface AfterThreadCloseHookData {
-  threadId: string;
+	threadId: string;
 }
 
 export type AfterThreadCloseHookFn = (
-  data: AfterThreadCloseHookData,
+	data: AfterThreadCloseHookData,
 ) => Promise<void>;
 const afterThreadCloseHooks: Array<AfterThreadCloseHookFn> = [];
 
 export function afterThreadClose(fn: AfterThreadCloseHookFn) {
-  afterThreadCloseHooks.push(fn);
+	afterThreadCloseHooks.push(fn);
 }
 
 export async function callAfterThreadCloseHooks(
-  input: AfterThreadCloseHookData,
+	input: AfterThreadCloseHookData,
 ) {
-  for (const hook of afterThreadCloseHooks) {
-    await hook(input);
-  }
+	for (const hook of afterThreadCloseHooks) {
+		await hook(input);
+	}
 }

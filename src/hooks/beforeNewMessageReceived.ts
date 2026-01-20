@@ -2,43 +2,43 @@ import type { Message, User } from "discord.js";
 import type { CreateNewThreadForUserOpts } from "../data/threads";
 
 interface BeforeNewMessageReceivedHookData {
-  user: User;
-  message?: Message;
-  opts: CreateNewThreadForUserOpts;
-  cancel: Function;
+	user: User;
+	message?: Message;
+	opts: CreateNewThreadForUserOpts;
+	cancel: () => void;
 }
 
-interface BeforeNewMessageReceivedHookResult {
-  cancelled: boolean;
+export interface BeforeNewMessageReceivedHookResult {
+	cancelled: boolean;
 }
 
 export type BeforeNewMessageReceivedHookFn = (
-  data: BeforeNewMessageReceivedHookData,
+	data: BeforeNewMessageReceivedHookData,
 ) => Promise<void>;
 const beforeNewMessageReceivedHooks: Array<BeforeNewMessageReceivedHookFn> = [];
 
 export function beforeNewMessageReceived(fn: BeforeNewMessageReceivedHookFn) {
-  beforeNewMessageReceivedHooks.push(fn);
+	beforeNewMessageReceivedHooks.push(fn);
 }
 
 export async function callBeforeNewMessageReceivedHooks(
-  input: BeforeNewMessageReceivedHookData,
+	input: BeforeNewMessageReceivedHookData,
 ) {
-  const result: BeforeNewMessageReceivedHookResult = {
-    cancelled: false,
-  };
+	const result: BeforeNewMessageReceivedHookResult = {
+		cancelled: false,
+	};
 
-  const data = {
-    ...input,
+	const data = {
+		...input,
 
-    cancel() {
-      result.cancelled = true;
-    },
-  };
+		cancel() {
+			result.cancelled = true;
+		},
+	};
 
-  for (const hook of beforeNewMessageReceivedHooks) {
-    await hook(data);
-  }
+	for (const hook of beforeNewMessageReceivedHooks) {
+		await hook(data);
+	}
 
-  return result;
+	return result;
 }

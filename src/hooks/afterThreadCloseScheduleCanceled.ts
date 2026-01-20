@@ -1,25 +1,25 @@
 import type Thread from "../data/Thread";
 
 interface AfterThreadCloseScheduleCanceledHookData {
-  thread: Thread;
+	thread: Thread;
 }
 
 export type AfterThreadCloseScheduleCanceledHookFn = (
-  data: AfterThreadCloseScheduleCanceledHookData,
+	data: AfterThreadCloseScheduleCanceledHookData,
 ) => Promise<void>;
 const afterThreadCloseScheduleCanceledHooks: Array<AfterThreadCloseScheduleCanceledHookFn> =
-  [];
+	[];
 
 export function afterThreadCloseScheduleCanceled(
-  fn: AfterThreadCloseScheduleCanceledHookFn,
+	fn: AfterThreadCloseScheduleCanceledHookFn,
 ) {
-  afterThreadCloseScheduleCanceledHooks.push(fn);
+	afterThreadCloseScheduleCanceledHooks.push(fn);
 }
 
 export async function callAfterThreadCloseScheduleCanceledHooks(
-  input: AfterThreadCloseScheduleCanceledHookData,
+	input: AfterThreadCloseScheduleCanceledHookData,
 ) {
-  for (const hook of afterThreadCloseScheduleCanceledHooks) {
-    await hook(input);
-  }
+	for (const hook of afterThreadCloseScheduleCanceledHooks) {
+		await hook(input);
+	}
 }

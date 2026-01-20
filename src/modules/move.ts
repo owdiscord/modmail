@@ -1,79 +1,84 @@
+import { ChannelType, GuildChannel } from "discord.js";
 import type { ModuleProps } from "../plugins";
 import { slugify } from "../utils";
-import { ChannelType, GuildChannel } from "discord.js";
 
 export default ({ bot, config, commands }: ModuleProps) => {
-  if (!config.allowMove) return;
+	if (!config.allowMove) return;
 
-  commands.addInboxThreadCommand(
-    "move",
-    "<category:string$>",
-    async (_msg, args, thread) => {
-      const searchStr = args.category;
-      const normalizedSearchStr = slugify(searchStr);
+	commands.addInboxThreadCommand(
+		"move",
+		"<category:string$>",
+		async (_msg, args, thread) => {
+			if (!thread) return;
 
-      const channel = await bot.channels.fetch(thread.channel_id);
+			const searchStr = args.category as string;
+			const normalizedSearchStr = slugify(searchStr);
 
-      // Impossible
-      if (!channel || channel.isDMBased() || !(channel instanceof GuildChannel))
-        return;
+			const channel = await bot.channels.fetch(thread.channel_id);
 
-      await channel.guild.channels.fetch();
-      const channels = channel.guild.channels.cache;
-      const categories = channels.filter(
-        (c) =>
-          c.type === ChannelType.GuildCategory && c.id !== channel.parentId,
-      );
+			// Impossible
+			if (!channel || channel.isDMBased() || !(channel instanceof GuildChannel))
+				return;
 
-      if (categories.size === 0) return;
+			await channel.guild.channels.fetch();
+			const channels = channel.guild.channels.cache;
+			const categories = channels.filter(
+				(c) =>
+					c.type === ChannelType.GuildCategory && c.id !== channel.parentId,
+			);
 
-      // See if any category name contains a part of the search string
-      const containsRankings = categories.map((cat) => {
-        const normalizedCatName = slugify(cat?.name || "");
+			if (categories.size === 0) return;
 
-        let i = 0;
-        do {
-          if (!normalizedCatName.includes(normalizedSearchStr.slice(0, i + 1)))
-            break;
-          i++;
-        } while (i < normalizedSearchStr.length);
+			// See if any category name contains a part of the search string
+			const containsRankings = categories.map((cat) => {
+				const normalizedCatName = slugify(cat?.name || "");
 
-        if (
-          i > 0 &&
-          normalizedCatName.startsWith(normalizedSearchStr.slice(0, i))
-        ) {
-          // Slightly prioritize categories that *start* with the search string
-          i += 0.5;
-        }
+				let i = 0;
+				do {
+					if (!normalizedCatName.includes(normalizedSearchStr.slice(0, i + 1)))
+						break;
+					i++;
+				} while (i < normalizedSearchStr.length);
 
-        return { category: cat, score: i };
-      });
+				if (
+					i > 0 &&
+					normalizedCatName.startsWith(normalizedSearchStr.slice(0, i))
+				) {
+					// Slightly prioritize categories that *start* with the search string
+					i += 0.5;
+				}
 
-      // Sort by best match
-      containsRankings.sort((a, b) => {
-        return a.score > b.score ? -1 : 1;
-      });
+				return { category: cat, score: i };
+			});
 
-      if (containsRankings.length === 0 || containsRankings[0]?.score === 0) {
-        thread.postSystemMessage("No matching category");
-        return;
-      }
+			// Sort by best match
+			containsRankings.sort((a, b) => {
+				return a.score > b.score ? -1 : 1;
+			});
 
-      const targetCategory = containsRankings[0]?.category;
-      if (!targetCategory) return;
+			if (containsRankings.length === 0 || containsRankings[0]?.score === 0) {
+				thread.postSystemMessage("No matching category");
+				return;
+			}
 
-      try {
-        await channel.setParent(targetCategory.id, {
-          lockPermissions: config.syncPermissionsOnMove,
-        });
-      } catch (e: any) {
-        thread.postSystemMessage(`Failed to move thread: ${e.message}`);
-        return;
-      }
+			const targetCategory = containsRankings[0]?.category;
+			if (!targetCategory) return;
 
-      thread.postSystemMessage(
-        `⇅ Thread moved to **${targetCategory.name.toUpperCase()}**`,
-      );
-    },
-  );
+			try {
+				await channel.setParent(targetCategory.id, {
+					lockPermissions: config.syncPermissionsOnMove,
+				});
+			} catch (e: unknown) {
+				if (e instanceof Error)
+					thread.postSystemMessage(`Failed to move thread: ${e.message}`);
+				else thread.postSystemMessage(`Failed to move thread: ${e}`);
+
+				return;
+			}
+
+			thread.postSystemMessage(
+				`⇅ Thread moved to **${targetCategory.name.toUpperCase()}**`,
+			);
+		},
+	);
 };
