@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { parse as parsePath } from "node:path";
-import { useDb } from "./src/db";
-import { noop } from "./src/utils";
+import { useDb } from "./db";
+import { noop } from "./utils";
 
 const db = useDb();
 

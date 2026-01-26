@@ -7,7 +7,6 @@ COPY package.json bun.lockb* .
 # Install deps
 RUN bun install --frozen-lockfile
 
-COPY knexfile.js .
 COPY ./src ./src
 
 CMD ["bun", "src/index.js"]
