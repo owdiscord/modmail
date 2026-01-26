@@ -1,0 +1,23 @@
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: modmailroot
+      MYSQL_DATABASE: modmail
+      MYSQL_USER: modmail
+      MYSQL_PASSWORD: modmailbot
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    command:
+      - "--skip-log-bin"
+    restart: unless-stopped
+    healthcheck:
+      test: "/usr/bin/mysql --host=127.0.0.1 --user=root --password=\"modmailroot\" --execute \"SHOW DATABASES;\""
+      interval: 1s
+      timeout: 5s
+      retries: 60
+
+volumes:
+  mysql-data: {}
