@@ -479,175 +479,174 @@ export class Thread {
           attachmentLinks.push(savedAttachment);
         }
       }
+    }
 
-      const embeds = msg.embeds;
+    const embeds = msg.embeds;
 
-      // Handle forwards
-      if (
-        msg.reference &&
-        msg.reference.type === MessageReferenceType.Forward
-      ) {
-        const forward = msg.messageSnapshots.first();
-        if (!forward) return;
+    // Handle forwards
+    if (msg.reference && msg.reference.type === MessageReferenceType.Forward) {
+      const forward = msg.messageSnapshots.first();
+      if (!forward) return;
 
-        for (const embed of forward.embeds) {
-          embeds.push(embed);
-        }
-
-        let textContent = forward.content;
-        if (forward.stickers.size > 0) {
-          textContent += forward.stickers
-            .map((sticker) => {
-              return `Sticker **[${sticker.name}](https://media.discordapp.net/stickers/${sticker.id}.webp?size=160)**`;
-            })
-            .join("\n");
-        }
-
-        if (textContent.length === 0)
-          textContent = "Message contains only embeds";
-        messageContent = `\n\n> -# *↪ Forwarded from ${forward.guild?.name || "direct messages"}*\n> ${textContent}\n> -# ${forward.url}  •  <t:${Math.round(forward.createdTimestamp / 1000)}:f>`;
+      for (const embed of forward.embeds) {
+        embeds.push(embed);
       }
 
-      // Handle replies
-      let messageReply: MessageResolvable = "";
-      if (
-        relayInlineReplies &&
-        msg.reference &&
-        msg.reference.type === MessageReferenceType.Default &&
-        msg.reference.messageId
-      ) {
-        const repliedTo = await this.getThreadMessageForMessageId(
-          msg.reference.messageId,
-        );
-
-        if (repliedTo) {
-          messageReply = repliedTo.inbox_message_id;
-        }
-      }
-      if (msg.activity) {
-        let applicationName = "Unknown Application";
-
-        if (
-          !applicationName &&
-          msg.activity.partyId &&
-          msg.activity.partyId.startsWith("spotify:")
-        ) {
-          applicationName = "Spotify";
-        }
-
-        let activityText = "";
-        if (
-          msg.activity.type === MessageActivityType.Join ||
-          msg.activity.type === MessageActivityType.JoinRequest
-        ) {
-          activityText = "join a game";
-        } else if (msg.activity.type === MessageActivityType.Spectate) {
-          activityText = "spectate";
-        } else if (msg.activity.type === MessageActivityType.Listen) {
-          activityText = "listen along";
-        } else {
-          activityText = "do something";
-        }
-
-        messageContent += `\n\n*<This message contains an invite to ${activityText} on ${applicationName}>*`;
-        messageContent = messageContent.trim();
+      let textContent = forward.content;
+      if (forward.stickers.size > 0) {
+        textContent += forward.stickers
+          .map((sticker) => {
+            return `Sticker **[${sticker.name}](https://media.discordapp.net/stickers/${sticker.id}.webp?size=160)**`;
+          })
+          .join("\n");
       }
 
-      if (msg.stickers) {
-        const stickerLines = msg.stickers.map((sticker) => {
-          return `*Sent sticker "${sticker.name}":* https://media.discordapp.net/stickers/${sticker.id}.webp?size=160`;
-        });
+      if (textContent.length === 0)
+        textContent = "Message contains only embeds";
+      messageContent = `\n\n> -# *↪ Forwarded from ${forward.guild?.name || "direct messages"}*\n> ${textContent}\n> -# ${forward.url}  •  <t:${Math.round(forward.createdTimestamp / 1000)}:f>`;
+    }
 
-        messageContent += `\n\n${stickerLines.join("\n")}`;
-      }
-
-      messageContent = messageContent.trim();
-      if (msg.reference && msg.reference.type === MessageReferenceType.Forward)
-        messageContent = `\n${messageContent}`;
-
-      // Save DB entry
-      const threadMessage = new ThreadMessage({
-        inbox_message_id: "",
-        thread_id: this.id,
-        message_type: ThreadMessageType.FromUser,
-        user_id: this.user_id,
-        user_name: useDisplaynames
-          ? msg.author.globalName || msg.author.username
-          : msg.author.username,
-        body: messageContent,
-        is_anonymous: false,
-        dm_message_id: msg.id,
-        dm_channel_id: msg.channel.id,
-        attachments: attachmentLinks,
-        small_attachments: smallAttachmentLinks,
-        metadata: {
-          embeds,
-        },
-      });
-
-      // Show user reply in the inbox thread
-      const inboxContent = messageContentToAdvancedMessageContent(
-        formatters.formatUserReplyThreadMessage(threadMessage),
+    // Handle replies
+    let messageReply: MessageResolvable = "";
+    if (
+      relayInlineReplies &&
+      msg.reference &&
+      msg.reference.type === MessageReferenceType.Default &&
+      msg.reference.messageId
+    ) {
+      const repliedTo = await this.getThreadMessageForMessageId(
+        msg.reference.messageId,
       );
 
-      if (messageReply) {
-        inboxContent.reply = {
-          messageReference: messageReply,
-          failIfNotExists: false,
-        };
+      if (repliedTo) {
+        messageReply = repliedTo.inbox_message_id;
+      }
+    }
+    if (msg.activity) {
+      let applicationName = "Unknown Application";
+
+      if (
+        !applicationName &&
+        msg.activity.partyId &&
+        msg.activity.partyId.startsWith("spotify:")
+      ) {
+        applicationName = "Spotify";
       }
 
-      const attachments = [...smallAttachmentLinks];
-      inboxContent.content += `\n\n${attachmentLinks.join("\n")}`;
-      const inboxMessage = await this._postToThreadChannel({
-        ...inboxContent,
-        files: attachments,
+      let activityText = "";
+      if (
+        msg.activity.type === MessageActivityType.Join ||
+        msg.activity.type === MessageActivityType.JoinRequest
+      ) {
+        activityText = "join a game";
+      } else if (msg.activity.type === MessageActivityType.Spectate) {
+        activityText = "spectate";
+      } else if (msg.activity.type === MessageActivityType.Listen) {
+        activityText = "listen along";
+      } else {
+        activityText = "do something";
+      }
+
+      messageContent += `\n\n*<This message contains an invite to ${activityText} on ${applicationName}>*`;
+      messageContent = messageContent.trim();
+    }
+
+    if (msg.stickers) {
+      const stickerLines = msg.stickers.map((sticker) => {
+        return `*Sent sticker "${sticker.name}":* https://media.discordapp.net/stickers/${sticker.id}.webp?size=160`;
+      });
+
+      messageContent += `\n\n${stickerLines.join("\n")}`;
+    }
+
+    messageContent = messageContent.trim();
+    if (msg.reference && msg.reference.type === MessageReferenceType.Forward)
+      messageContent = `\n${messageContent}`;
+
+    // Save DB entry
+    const threadMessage = new ThreadMessage({
+      inbox_message_id: "",
+      thread_id: this.id,
+      message_type: ThreadMessageType.FromUser,
+      user_id: this.user_id,
+      user_name: useDisplaynames
+        ? msg.author.globalName || msg.author.username
+        : msg.author.username,
+      body: messageContent,
+      is_anonymous: false,
+      dm_message_id: msg.id,
+      dm_channel_id: msg.channel.id,
+      attachments: attachmentLinks,
+      small_attachments: smallAttachmentLinks,
+      metadata: {
         embeds,
-      });
-      if (inboxMessage) {
-        threadMessage.inbox_message_id = inboxMessage.id;
-      }
+      },
+    });
 
-      if (reactOnSeen && reactOnSeenEmoji) {
-        await msg.react(reactOnSeenEmoji).catch(noop);
-      }
+    // Show user reply in the inbox thread
+    const inboxContent = messageContentToAdvancedMessageContent(
+      formatters.formatUserReplyThreadMessage(threadMessage),
+    );
 
-      await threadMessage.saveToDb(this.db);
+    if (messageReply) {
+      inboxContent.reply = {
+        messageReference: messageReply,
+        failIfNotExists: false,
+      };
+    }
 
-      // Call any registered afterNewMessageReceivedHooks
-      await callAfterNewMessageReceivedHooks({
-        user,
-        opts,
-        message: opts.message,
-      });
+    const attachments = [...smallAttachmentLinks, ...attachmentLinks];
+    if (attachments.length)
+      inboxContent.content += `\n${smallAttachmentLinks.join("\n")}`;
 
-      // Interrupt scheduled closing, if in progress
-      if (this.scheduled_close_at && this.scheduled_close_id) {
-        await this.cancelScheduledClose();
-        await this.postSystemMessage(
-          `<@!${this.scheduled_close_id}> Thread that was scheduled to be closed got a new reply. Cancelling.`,
-          {
-            allowedMentions: {
-              users: [this.scheduled_close_id],
-            },
+    const inboxMessage = await this._postToThreadChannel({
+      ...inboxContent,
+      files: attachments,
+      embeds,
+    });
+    if (inboxMessage) {
+      threadMessage.inbox_message_id = inboxMessage.id;
+    }
+
+    if (reactOnSeen && reactOnSeenEmoji) {
+      await msg.react(reactOnSeenEmoji).catch(noop);
+    }
+
+    await threadMessage.saveToDb(this.db);
+
+    // Call any registered afterNewMessageReceivedHooks
+    await callAfterNewMessageReceivedHooks({
+      user,
+      opts,
+      message: opts.message,
+    });
+
+    // Interrupt scheduled closing, if in progress
+    if (this.scheduled_close_at && this.scheduled_close_id) {
+      await this.cancelScheduledClose();
+      await this.postSystemMessage(
+        `<@!${this.scheduled_close_id}> Thread that was scheduled to be closed got a new reply. Cancelling.`,
+        {
+          allowedMentions: {
+            users: [this.scheduled_close_id],
           },
-        );
-      }
+        },
+      );
+    }
 
-      if (this.alert_ids && !skipAlert) {
-        const ids = this.alert_ids.split(",");
-        const mentionsStr = ids.map((id) => `<@!${id}> `).join("");
+    if (this.alert_ids && !skipAlert) {
+      const ids = this.alert_ids.split(",");
+      const mentionsStr = ids.map((id) => `<@!${id}> `).join("");
 
-        await this.deleteAlerts();
-        await this.postSystemMessage(
-          `${mentionsStr}New message from ${this.user_name}`,
-          {
-            allowedMentions: {
-              users: ids,
-            },
+      await this.deleteAlerts();
+      await this.postSystemMessage(
+        `${mentionsStr}New message from ${this.user_name}`,
+        {
+          allowedMentions: {
+            users: ids,
           },
-        );
-      }
+        },
+      );
     }
   }
 
