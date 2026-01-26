@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { serve } from "bun";
-import { doMigration } from "./migrate";
+// import { doMigration } from "./migrate";
 import { BotError } from "./BotError";
 import bot from "./bot";
 import { getPrettyVersion } from "./botVersion";
@@ -24,6 +24,10 @@ if (bunVersion[0] < 1 || bunVersion[1] < 3) {
 // Print out bot and Bun version
 console.log(
   `Starting Modmail ${getPrettyVersion()} on Bun ${process.versions.bun} (${process.arch})`,
+);
+
+console.log(
+  `mysql://${cfg.mysqlOptions.user}:${cfg.mysqlOptions.password}@${cfg.mysqlOptions.host}:${cfg.mysqlOptions.port}/${cfg.mysqlOptions.database}?timezone=Z`,
 );
 
 // Verify node modules have been installed
@@ -111,7 +115,7 @@ modules.forEach((mod) => {
 
 (async () => {
   // Make sure the database is up to date
-  const _newMigrations = doMigration();
+  // const _newMigrations = doMigration();
   // const [_, newMigrations] = await knex.migrate.list();
   // if (newMigrations.length > 0) {
   // 	console.log(
