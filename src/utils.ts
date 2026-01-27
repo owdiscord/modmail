@@ -275,6 +275,8 @@ export function convertDelayStringToMS(str: string): number | null {
     const value = parseInt(match[1] || "0", 10);
     if (!match[2]) continue;
     const unit = (match[2]?.toLowerCase() as keyof typeof units) || "m";
+    if (!units[unit]) return null;
+
     totalMs += value * units[unit];
   }
 
