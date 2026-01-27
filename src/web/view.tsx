@@ -1,10 +1,13 @@
 import type { FC } from "hono/jsx";
 import { ThreadMessageType } from "../data/constants";
-// import bot from "../bot";
 import type { Thread as DBThread } from "../data/Thread";
 import type { ThreadMessage as DBThreadMessage } from "../data/ThreadMessage";
 import type { Embed } from "discord.js";
 import { marked, type TokenizerAndRendererExtension } from "marked";
+import { findThreadLogByChannelID } from "../data/threads";
+import { useDb } from "../db";
+
+const db = useDb()
 
 const smallHeading: TokenizerAndRendererExtension = {
   name: 'smallHeading',
@@ -38,8 +41,31 @@ const smallHeading: TokenizerAndRendererExtension = {
 // Apply the extension
 marked.use({ extensions: [smallHeading] });
 
+const channelsCache: Record<string, { name: string, thread_id: string }> = {}
+
 const convertMarkdown = async (input: string): Promise<string> => {
-  return await marked(input)
+  let html = input
+  const regex = /<#(\d+)>/g;
+  const channelMatches = [...html.matchAll(regex)]
+
+  // Fetch all channel data in parallel
+  const channelPromises = channelMatches.map(match =>
+    findThreadLogByChannelID(db, match[1] || "")
+  );
+
+  for (let promise of channelPromises) {
+    const { channel_id, thread_id, name } = await promise
+    channelsCache[channel_id] = { thread_id, name }
+  }
+
+  // Replace each match with the corresponding result
+  channelMatches.forEach((match) => {
+    const { thread_id, name } = channelsCache[match[1] || ""] || { thread_id: "", name: "" }
+    const replacement = `<a href="${thread_id}">#${name}</a>` || match[0]; // Fallback to original if null/undefined
+    html = html.replace(match[0], replacement);
+  });
+
+  return await marked(html)
 }
 
 const Layout: FC = (props) => {
@@ -171,7 +197,7 @@ const Embeds: FC<{ embeds: Array<Embed> }> = ({ embeds }) => {
         <ul>{embed.fields.map(async field => (
           <li data-inline={field.inline}>
             <h5>{field.name}</h5>
-            <div dangerouslySetInnerHTML={{ __html: await marked(field.value) }}></div>
+            <div dangerouslySetInnerHTML={{ __html: await convertMarkdown(field.value) }}></div>
           </li>
         ))}</ul>
         {embed.footer && <footer>
@@ -272,8 +298,8 @@ const InternalMessage: FC<{ msg: CollapsedThreadMessage }> = ({ msg }) => {
           <time>{msg.created_at.toLocaleString()}</time>
         </div>
         <div class="msg-body">
-          {msg.bodies.map((body) => (
-            <p>{body}</p>
+          {msg.bodies.map(async (body) => (
+            <article dangerouslySetInnerHTML={{ __html: await convertMarkdown(body) }}></article>
           ))}
         </div>
       </div>

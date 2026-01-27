@@ -60,6 +60,7 @@ import { getModeratorThreadDisplayRoleName } from "./displayRoles";
 import type { Snippet } from "./Snippet";
 import { all } from "./snippets";
 import ThreadMessage, { type ThreadMessageProps } from "./ThreadMessage";
+import { getNextThreadMessageNumber } from "./threads";
 
 const escapeFormattingRegex = /[_`~*|]/g;
 
@@ -112,7 +113,7 @@ export class Thread {
   public created_at: Date;
   public metadata: Record<string, unknown>;
   private _autoAlertTimeout: ReturnType<typeof setTimeout> | null = null;
-  private dm_channel_id?: string;
+  private dm_channel_id: string = "";
 
   constructor(db: SQL, props: ThreadProps) {
     this.db = db;
@@ -141,18 +142,6 @@ export class Thread {
       this.metadata = JSON.parse(props.metadata);
     else if (typeof props.metadata === "object") this.metadata = props.metadata;
     else this.metadata = {};
-  }
-
-  async _sendDMToUser(content: MessageCreateOptions): Promise<Message> {
-    const user = await bot.users.fetch(this.user_id);
-
-    if (user) {
-      const msg = await user.send(content);
-      this.dm_channel_id = msg.channelId;
-      return msg;
-    }
-
-    throw "We could not send a message to the user, they may have blocked the bot, or have strict privacy settings.";
   }
 
   async _postToThreadChannel(message: MessageCreateOptions): Promise<Message> {
@@ -211,43 +200,6 @@ export class Thread {
     throw "something truly wild has happend";
   }
 
-  async _addThreadMessageToDB(
-    db: SQL,
-    message: ThreadMessage,
-  ): Promise<ThreadMessage> {
-    const data = {
-      thread_id: this.id,
-      created_at: Date.now(),
-      is_anonymous: false,
-      dm_channel_id: this.dm_channel_id,
-      message_type: message.message_type,
-      message_number:
-        message.message_type === ThreadMessageType.ToUser
-          ? await this._getAndIncrementNextMessageNumber()
-          : message.message_number,
-    };
-    try {
-      const inserted = await db`INSERT INTO thread_messages ${db(data)}`;
-
-      return new ThreadMessage(inserted[0]);
-    } catch (e) {
-      throw new Error(`could not create a thread: ${e}`);
-    }
-  }
-
-  async _getAndIncrementNextMessageNumber(): Promise<number> {
-    const next = await this.db.transaction(async (sql) => {
-      const nextNumberRow =
-        await sql`SELECT next_message_number FROM threads WHERE id = ${this.id}`;
-      if (nextNumberRow?.[0]) {
-        await sql`UPDATE threads SET next_message_number = ${nextNumberRow[0].next_message_number + 1}`;
-        return nextNumberRow[0].next_message_number;
-      }
-    });
-
-    return next;
-  }
-
   async _startAutoAlertTimer(modId: string): Promise<void> {
     if (this._autoAlertTimeout) clearTimeout(this._autoAlertTimeout);
 
@@ -261,12 +213,14 @@ export class Thread {
   }
 
   async replyToUser(
-    moderator: GuildMember,
+    moderator: GuildMember | null,
     text: string,
     replyAttachments: Collection<string, Attachment> = new Collection(),
     isAnonymous: boolean = false,
     messageReference: MessageReference | null = null,
   ): Promise<boolean> {
+    if (!moderator) return false;
+
     const regularName = useDisplaynames
       ? moderator.user.globalName || moderator.user.username
       : moderator.user.username;
@@ -345,11 +299,18 @@ export class Thread {
       }
     }
 
+    const user = await bot.users.fetch(this.user_id).catch(() => {
+      throw "the bot may be blocked or missing permissions.";
+    });
+
+    if (!user) return false;
+
     const threadMessage = new ThreadMessage({
       thread_id: this.id,
       message_type: ThreadMessageType.ToUser,
-      message_number: await this._getAndIncrementNextMessageNumber(),
+      message_number: await getNextThreadMessageNumber(this.db, this.id),
       user_id: moderator.id,
+      dm_channel_id: user.dmChannel?.id || this.dm_channel_id || "",
       user_name: moderatorName,
       body: text,
       is_anonymous: isAnonymous,
@@ -390,8 +351,7 @@ export class Thread {
       return false;
     }
 
-    // Send the reply DM
-    const dmMessage = await this._sendDMToUser(dmContent).catch(async (err) => {
+    const dmMessage = await user.send(dmContent).catch(async (err) => {
       await threadMessage.deleteFromDb(this.db);
       await this.postSystemMessage(
         `Error while replying to user: ${err.message}`,
@@ -713,15 +673,17 @@ export class Thread {
       allowedMentions?: MessageMentionOptions;
     } = {},
   ): Promise<void> {
+    const user = await bot.users.fetch(this.user_id);
+
     const threadMessage = new ThreadMessage({
       thread_id: this.id,
       message_type: ThreadMessageType.SystemToUser,
       user_name: "",
+      dm_channel_id: user.dmChannel?.id,
       body: text,
       is_anonymous: false,
     });
 
-    const user = await bot.users.fetch(this.user_id);
     if (!user || !user.dmChannel) throw "failure!!!";
 
     const dmContent = formatters.formatSystemToUserDM(threadMessage);
@@ -841,7 +803,7 @@ export class Thread {
     messageNumber: number,
   ): Promise<ThreadMessage> {
     const data = await this
-      .db`SELECT * FROM thread_messages WHERE thread_id = ${this.id} AND message_number = ${messageNumber}`;
+      .db`SELECT * FROM thread_messages WHERE thread_id = ${this.id} AND message_number = ${messageNumber} LIMIT 1`;
 
     if (data && data.length === 1) return new ThreadMessage(data[0]);
 
@@ -973,7 +935,6 @@ export class Thread {
   }
 
   async editStaffReply(
-    _moderator: User,
     threadMessage: ThreadMessage,
     newText: string,
     quiet = true,
@@ -1003,6 +964,7 @@ export class Thread {
 
     // Edit the DM (user side) message
     const threadChannel = await bot.channels.fetch(dm_channel_id);
+
     if (threadChannel?.isSendable()) {
       const message = await threadChannel.messages.fetch(dm_message_id);
       message.edit(formattedDM);
@@ -1022,9 +984,11 @@ export class Thread {
         user_name: "",
         body: "",
         is_anonymous: false,
+        metadata: {
+          originalThreadMessage: threadMessage,
+          newBody: newText,
+        },
       });
-      editThreadMessage.metadata.originalThreadMessage = threadMessage;
-      editThreadMessage.metadata.newBody = newText;
 
       const threadNotification =
         formatters.formatStaffReplyEditNotificationThreadMessage(

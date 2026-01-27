@@ -118,8 +118,7 @@ export class ThreadMessage {
     };
 
     try {
-      return await db`
-  INSERT INTO thread_messages ${db(messageData)}`;
+      return await db`INSERT INTO thread_messages ${db(messageData)}`;
     } catch (e) {
       throw new Error(
         `[ThreadMessage::saveToDb@ThreadMessage.ts:138] failed to save thread_message to db: ${e}`,

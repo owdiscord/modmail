@@ -31,7 +31,7 @@ import {
   readMultilineConfigValue,
   slugify,
 } from "../utils";
-import { ThreadStatus } from "./constants";
+import { ThreadMessageType, ThreadStatus } from "./constants";
 import { findNotesByUserId } from "./notes";
 import Thread, { type ThreadProps } from "./Thread";
 import ThreadMessage from "./ThreadMessage";
@@ -584,4 +584,28 @@ export async function findThreadMessageByDMMessageId(
   if (message?.[0]) return new ThreadMessage(message[0]);
 
   return null;
+}
+
+export async function findThreadLogByChannelID(
+  db: SQL,
+  channel_id: string,
+): Promise<{ thread_id: string; channel_id: string; name: string }> {
+  const thread =
+    await db`SELECT id, user_name FROM threads WHERE channel_id = ${channel_id}`;
+
+  if (thread && thread.length === 1)
+    return { thread_id: thread[0].id, channel_id, name: thread[0].user_name };
+
+  throw "could not find a log for that thread";
+}
+
+export async function getNextThreadMessageNumber(
+  db: SQL,
+  thread_id: string,
+): Promise<number> {
+  const rows =
+    await db`SELECT COUNT(*) + 1 as count FROM thread_messages WHERE thread_id = ${thread_id} AND message_type = ${ThreadMessageType.ToUser}`;
+  if (rows && rows.length == 1) return rows[0].count;
+
+  return 1;
 }
