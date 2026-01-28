@@ -18,7 +18,6 @@ import {
   type TextChannel,
 } from "discord.js";
 import humanizeDuration from "humanize-duration";
-import moment, { type MomentInput } from "moment";
 import { publicIp } from "public-ip";
 import { BotError } from "./BotError";
 import bot from "./bot";
@@ -181,8 +180,10 @@ export function getUserMention(str: string): string | null {
   return null;
 }
 
-export function getTimestamp(input: MomentInput, strict = false): string {
-  return moment.utc(input, strict).format("HH:mm");
+export function getTimestamp(input: Date, strict = false): string {
+  const hours = input.getHours().toString().padStart(2, "0");
+  const minutes = input.getMinutes().toString().padStart(2, "0");
+  return `${hours}:${minutes}`;
 }
 
 export function disableLinkPreviews(str: string): string {
@@ -364,33 +365,6 @@ export function postSystemMessageWithFallback(
   }
 
   channel.send(text);
-}
-
-/**
- * A normalized way to set props in data models, fixing some inconsistencies between different DB drivers in knex
- * @param {Object} target
- * @param {Object} props
- */
-export function setDataModelProps<
-  T extends Record<string | number | symbol, unknown>,
->(target: T, props: T) {
-  for (const prop in props) {
-    if (!Object.hasOwn(props, prop)) continue;
-    // DATETIME fields are always returned as Date objects in MySQL/MariaDB
-    if (props[prop] instanceof Date) {
-      // ...even when NULL, in which case the date's set to unix epoch
-      if ((props[prop] as Date).getUTCFullYear() === 1970) {
-        target[prop] = null as T[Extract<keyof T, string>];
-      } else {
-        // Set the value as a string in the same format it's returned in SQLite
-        target[prop] = moment
-          .utc(props[prop])
-          .format("YYYY-MM-DD HH:mm:ss") as T[Extract<keyof T, string>];
-      }
-    } else {
-      target[prop] = props[prop];
-    }
-  }
 }
 
 export function isSnowflake(str: string) {

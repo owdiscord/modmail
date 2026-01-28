@@ -1,4 +1,3 @@
-import moment from "moment";
 import bot from "./bot";
 import config from "./cfg";
 import { ThreadMessageType } from "./data/constants";
@@ -168,7 +167,12 @@ const defaultFormatters = {
         return message.body;
       }
 
-      let line = `[${moment.utc(message.created_at).format("YYYY-MM-DD HH:mm:ss")}]`;
+      const time = message.created_at
+        .toISOString()
+        .replace("T", " ")
+        .substring(0, 19);
+
+      let line = `[${time}]`;
 
       if (opts.verbose) {
         if (message.dm_channel_id) {

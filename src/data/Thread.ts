@@ -61,6 +61,7 @@ import type { Snippet } from "./Snippet";
 import { all } from "./snippets";
 import ThreadMessage, { type ThreadMessageProps } from "./ThreadMessage";
 import { getNextThreadMessageNumber } from "./threads";
+import type { LogStorageTypes } from "./logs";
 
 const escapeFormattingRegex = /[_`~*|]/g;
 
@@ -80,7 +81,7 @@ export type ThreadProps = {
   scheduled_suspend_id?: string;
   scheduled_suspend_name?: string;
   alert_ids: string;
-  log_storage_type: string;
+  log_storage_type: LogStorageTypes;
   log_storage_data: object;
   created_at?: Date;
   metadata: string;
@@ -103,7 +104,7 @@ export class Thread {
   public scheduled_suspend_id: string | null;
   public scheduled_suspend_name: string | null;
   public alert_ids!: string;
-  public log_storage_type!: string;
+  public log_storage_type!: LogStorageTypes;
   public log_storage_data!:
     | {
         fullPath?: string;
@@ -1045,7 +1046,7 @@ export class Thread {
   }
 
   async updateLogStorageValues(
-    storageType: string,
+    storageType: LogStorageTypes,
     storageData:
       | {
           fullPath?: string;
@@ -1061,43 +1062,11 @@ export class Thread {
       log_storage_data: JSON.stringify(storageData),
     })} WHERE id = ${this.id}`;
   }
-  //
-  // /**
-  //  * @param {string} key
-  //  * @param {*} value
-  //  * @return {Promise<void>}
-  //  */
-  // async setMetadataValue(key: string, value: any): Promise<void> {
-  //   this.metadata = this.metadata || {};
-  //   this.metadata[key] = value;
-  //
-  //   await knex("threads").where("id", this.id).update({
-  //     metadata: this.getSQLProps().metadata,
-  //   });
-  // }
-  //
-  // /**
-  //  * @param {string} key
-  //  * @returns {*}
-  //  */
-  // getMetadataValue(key: string): any {
-  //   return this.metadata ? this.metadata[key] : null;
-  // }
-
-  /**
-   * @returns {boolean}
-   */
-  isOpen(): boolean {
-    return this.status === ThreadStatus.Open;
-  }
 
   isClosed() {
     return this.status === ThreadStatus.Closed;
   }
 
-  /**
-   * Requests messages sent after last correspondence from Discord API to recover messages lost to downtime
-   */
   async recoverDowntimeMessages() {
     if (await isBlocked(this.user_id)) return;
 
