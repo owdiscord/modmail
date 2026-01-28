@@ -298,12 +298,10 @@ export async function createNewThreadForUser(
       created_at: new Date(),
       thread_number: 0,
       alert_ids: "",
-      log_storage_type: config.logStorage || "local",
+      log_storage_type: "local",
       log_storage_data: {},
       metadata: "{}",
     });
-
-    console.log("threadId", newThreadId);
 
     const newThread = await findById(db, newThreadId);
     if (!newThread) {
@@ -608,4 +606,27 @@ export async function getNextThreadMessageNumber(
   if (rows && rows.length == 1) return rows[0].count;
 
   return 1;
+}
+
+export async function getThreadByNumber(
+  db: SQL,
+  thread_number: number,
+): Promise<Thread | null> {
+  const threads =
+    await db`SELECT * FROM threads WHERE thread_number = ${thread_number} LIMIT 1`;
+
+  if (threads && threads.length === 1) return new Thread(db, threads[0]);
+
+  return null;
+}
+
+export async function getThreadById(
+  db: SQL,
+  id: string,
+): Promise<Thread | null> {
+  const threads = await db`SELECT * FROM threads WHERE id = ${id} LIMIT 1`;
+
+  if (threads && threads.length === 1) return new Thread(db, threads[0]);
+
+  return null;
 }

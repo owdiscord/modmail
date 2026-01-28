@@ -1,4 +1,4 @@
-import { Embed, EmbedBuilder, type Message } from "discord.js";
+import { Client, Embed, EmbedBuilder, type Message } from "discord.js";
 import { ThreadStatus } from "../data/constants";
 import { getLogFile, getLogUrl, saveLogToStorage } from "../data/logs";
 import type Thread from "../data/Thread";
@@ -191,48 +191,44 @@ export default ({ bot, db, config, commands, hooks }: ModuleProps) => {
   });
   commands.addInboxServerCommand(
     "thread",
-    "",
-    async (msg, _args, thread) => {
-      if (!thread) return;
+    [
+      {
+        name: "thread",
+        type: "string",
+        required: false,
+      },
+    ],
+    async (msg, args, thread) => {
+      if (!thread && !args.thread) return;
 
-      const channel = await getOrFetchChannel(bot, msg.channel.id);
-      if (!channel || !channel.isSendable()) return;
+      if (/^\d+$/.test(args.thread as string)) {
+        let found = await threads.getThreadByNumber(
+          db,
+          parseInt(args.thread as string, 10),
+        );
+        if (found) thread = found;
+      }
 
-      const embed = new EmbedBuilder();
-      embed.setColor("#fe701d");
-      embed.setTitle(`Thread #${thread.id}`);
-      embed.setDescription(`[Log link](${await getLogUrl(thread)})`);
-      embed.addFields([
-        {
-          name: "User name",
-          value: `\`${thread.user_name}\``,
-          inline: true,
-        },
-        {
-          name: "User ID",
-          value: `\`${thread.user_id}\``,
-          inline: true,
-        },
-        {
-          name: "Thread number",
-          value: thread.thread_number.toString() + " (deprecated)",
-          inline: true,
-        },
-        // {
-        //   name: "Messages sent",
-        //   value: (
-        //     (await threads.getNextThreadMessageNumber(db, thread.id)) - 1
-        //   ).toString(),
-        //   inline: true,
-        // },
-      ]);
-      embed.setFooter({
-        text: `Generated <t:${Math.round(new Date().getTime() / 1000)}:S>`,
-      });
+      if (
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+          args.thread as string,
+        )
+      ) {
+        let found = await threads.getThreadById(db, args.thread as string);
+        if (found) thread = found;
+      }
 
-      channel.send({
-        embeds: [embed],
-      });
+      if (!thread) {
+        if (msg.channel.isSendable())
+          msg.channel.send(
+            "Could not find a thread matching that ID or thread number.",
+          );
+        else console.error(`Could not find a thread matching ${args.thread}`);
+
+        return;
+      }
+
+      threadInfoCmd(bot, msg, thread);
     },
     {},
   );
@@ -242,3 +238,44 @@ export default ({ bot, db, config, commands, hooks }: ModuleProps) => {
     if (thread) await saveLogToStorage(thread);
   });
 };
+
+async function threadInfoCmd(bot: Client, msg: Message, thread: Thread) {
+  const channel = await getOrFetchChannel(bot, msg.channel.id);
+  if (!channel || !channel.isSendable()) return;
+
+  const embed = new EmbedBuilder();
+  embed.setColor("#fe701d");
+  embed.setTitle(`Thread with ${thread.user_name}`);
+  embed.setDescription(
+    `\`${thread.id}\`\n\n[Read Log link](${await getLogUrl(thread)})`,
+  );
+  embed.setTimestamp(thread.created_at);
+  embed.addFields([
+    {
+      name: "User name",
+      value: `\`${thread.user_name}\``,
+      inline: true,
+    },
+    {
+      name: "User ID",
+      value: `\`${thread.user_id}\``,
+      inline: true,
+    },
+    {
+      name: "Thread number",
+      value: thread.thread_number.toString() + " (deprecated)",
+      inline: true,
+    },
+    // {
+    //   name: "Messages sent",
+    //   value: (
+    //     (await threads.getNextThreadMessageNumber(db, thread.id)) - 1
+    //   ).toString(),
+    //   inline: true,
+    // },
+  ]);
+
+  channel.send({
+    embeds: [embed],
+  });
+}
