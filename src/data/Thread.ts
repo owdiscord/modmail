@@ -1312,8 +1312,8 @@ export class Thread {
 
         embed.addFields([
           {
-            name: `${emoji} ${guildData.member.nickname}`,
-            value: `${roleEmoji(roles[0] || "")} ${rolesForDisplay}   •  ${pronouns.length > 0 ? pronouns.join("/") : ""}`,
+            name: `${emoji}  ${guildData.member.nickname}  •  ${pronouns.length > 0 ? `(${pronouns.join("/")})` : ""}`,
+            value: `${roleEmoji(roles[0] || "")}  ${rolesForDisplay}`,
           },
         ]);
       }
