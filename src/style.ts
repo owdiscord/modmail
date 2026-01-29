@@ -10,6 +10,7 @@ export const Emoji = {
   Verified: "<:Verified:1466317991183515802>",
   Modmail: "<:ModMail:1466317685926269043>",
   Appeals: "<:Appeals:1466328093466562808>",
+  Schedule: "🕙",
   Notepad: "🗒️",
   Roles: {
     LFGTool: "<:LFGTool:1466324267279847454>",

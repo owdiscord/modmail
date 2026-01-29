@@ -1226,22 +1226,11 @@ export class Thread {
     }
 
     let muteStatus = false;
-    // try {
-    //   const ban = await userGuildData
-    //     .get("94882524378968064")
-    //     ?.guild.bans.fetch(user.id);
-    //   if (ban) banStatus = true;
-    // } catch (err: unknown) {
-    //   // Unknown Ban - user is not banned
-    //   if (err instanceof DiscordAPIError && err.code === 10026) {
-    //     return false;
-    //   }
-    //
-    //   throw err;
-    // }
-
     const pronouns: Array<string> = [];
     const roles: Array<string> = [];
+    const userBanned =
+      userGuildData.has("587215460127473703") &&
+      !userGuildData.has("94882524378968064");
 
     // Guild member info
     for (const [_guildId, guildData] of userGuildData.entries()) {
@@ -1258,11 +1247,11 @@ export class Thread {
       ];
 
       if (guildData.member.voice.channelId) {
-        const voiceChannel = guildData.guild.channels.fetch(
+        const voiceChannel = await guildData.guild.channels.fetch(
           guildData.member.voice.channelId,
         );
 
-        if (voiceChannel && voiceChannel instanceof VoiceChannel) {
+        if (voiceChannel && voiceChannel.isVoiceBased()) {
           headerItems.push({
             name: "Voice Channel",
             value: escapeMarkdown(voiceChannel.name),
@@ -1309,30 +1298,32 @@ export class Thread {
         if (guildData.guild.name.toLowerCase().includes("appeal"))
           emoji = Emoji.Appeals;
 
-        const rolesForDisplay = sortRoles(roles)
-          .filter((r) => r !== "Regular")
-          .map((r) =>
-            [
-              "Guillard Purple",
-              "Vishkar Blue",
-              "Kamori Teal",
-              "Oladele Green",
-              "Helix Yellow",
-            ].includes(r)
-              ? "Regular"
-              : r,
-          )
-          .join(", ");
+        if (!userBanned) {
+          const rolesForDisplay = sortRoles(roles)
+            .filter((r) => r !== "Regular")
+            .map((r) =>
+              [
+                "Guillard Purple",
+                "Vishkar Blue",
+                "Kamori Teal",
+                "Oladele Green",
+                "Helix Yellow",
+              ].includes(r)
+                ? "Regular"
+                : r,
+            )
+            .join(", ");
 
-        embed.addFields([
-          {
-            name: `${emoji}${draysLittlePreciousSpace}${escapeMarkdown(nickname || guildData.member.user.username)}${pronouns.length > 0 ? `  •  (${pronouns.join("/")})` : ""}`,
-            value:
-              rolesForDisplay.length > 0
-                ? `${roleEmoji(roles[0] || "")}${draysLittlePreciousSpace}${rolesForDisplay}`
-                : "",
-          },
-        ]);
+          embed.addFields([
+            {
+              name: `${emoji}${draysLittlePreciousSpace}${escapeMarkdown(nickname || guildData.member.user.username)}${pronouns.length > 0 ? `  •  (${pronouns.join("/")})` : ""}`,
+              value:
+                rolesForDisplay.length > 0
+                  ? `${roleEmoji(roles[0] || "")}${draysLittlePreciousSpace}${rolesForDisplay}`
+                  : "",
+            },
+          ]);
+        }
       }
 
       const headerStr = headerItems
@@ -1364,11 +1355,11 @@ export class Thread {
         const mostRecentLog = await getLogUrl(mostRecentThread);
 
         embed.setDescription(
-          `${userLogCount} prior thread${userLogCount === 1 ? `` : "s"} [(view last)](${mostRecentLog})`,
+          `${userLogCount} previous thread${userLogCount === 1 ? `` : "s"} [(view last)](${mostRecentLog})`,
         );
       }
     } else {
-      embed.setDescription("First thread with user");
+      embed.setDescription("No previous threads");
     }
 
     if (muteStatus)
@@ -1379,10 +1370,7 @@ export class Thread {
         },
       ]);
 
-    if (
-      userGuildData.has("587215460127473703") &&
-      !userGuildData.has("94882524378968064")
-    ) {
+    if (userBanned) {
       embed.setColor(Colours.Red as HexColorString);
       embed.addFields([
         {
