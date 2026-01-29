@@ -2,8 +2,10 @@ import bot from "../bot";
 import cfg from "../cfg";
 import {
   chunkMessageLines,
+  getMainGuilds,
   messageContentIsWithinMaxLength,
   noop,
+  readMultilineConfigValue,
 } from "../utils";
 
 const {
@@ -43,6 +45,10 @@ import {
   type ReplyOptions,
   type SendableChannels,
   type User,
+  Guild,
+  escapeMarkdown,
+  VoiceChannel,
+  EmbedBuilder,
 } from "discord.js";
 import config from "../cfg";
 import { formatters } from "../formatters";
@@ -56,12 +62,18 @@ import { saveAttachment } from "./attachments";
 import { isBlocked } from "./blocked";
 import { ThreadMessageType, ThreadStatus } from "./constants";
 import { getModeratorThreadDisplayRoleName } from "./displayRoles";
-import type { LogStorageTypes } from "./logs";
+import { getLogUrl, type LogStorageTypes } from "./logs";
 import type { Snippet } from "./Snippet";
 import { all } from "./snippets";
 import ThreadMessage, { type ThreadMessageProps } from "./ThreadMessage";
-import { getNextThreadMessageNumber } from "./threads";
+import {
+  getClosedThreadCountByUserId,
+  getLastClosedThreadByUser,
+  getNextThreadMessageNumber,
+} from "./threads";
 import { convertDelayStringToMS } from "../utils/time";
+import humanizeDuration from "humanize-duration";
+import { Emoji } from "../style";
 
 const escapeFormattingRegex = /[_`~*|]/g;
 
@@ -85,6 +97,7 @@ export type ThreadProps = {
   log_storage_data: object;
   created_at?: Date;
   metadata: string;
+  dm_channel_id: string;
 };
 
 export class Thread {
@@ -133,6 +146,7 @@ export class Thread {
     this.scheduled_suspend_id = props.scheduled_suspend_id || null;
     this.scheduled_suspend_name = props.scheduled_suspend_name || null;
     this.alert_ids = props.alert_ids;
+    this.dm_channel_id = props.dm_channel_id;
     this.log_storage_type = props.log_storage_type;
     this.log_storage_data =
       typeof props.log_storage_data === "string"
@@ -612,35 +626,41 @@ export class Thread {
   }
 
   async postSystemMessage(
-    text: string,
+    message: string | MessageCreateOptions,
     opts: {
       allowedMentions?: MessageMentionOptions;
       messageReference?: MessageReference;
+      emptyContent?: boolean;
     } = {},
   ): Promise<{
     message: Message;
     threadMessage: ThreadMessage;
   }> {
+    message = typeof message === "string" ? { content: message } : message;
+
     const threadMessage = new ThreadMessage({
       thread_id: this.id,
       message_type: ThreadMessageType.System,
       user_id: undefined,
       user_name: "",
-      body: text,
+      body: opts.emptyContent ? "" : message.content,
       is_anonymous: false,
     });
 
-    const content = messageContentToAdvancedMessageContent(
+    const { content } = messageContentToAdvancedMessageContent(
       formatters.formatSystemThreadMessage(threadMessage),
     );
 
-    content.allowedMentions = opts.allowedMentions;
+    message.content = opts.emptyContent ? "" : content;
+
+    message.allowedMentions = opts.allowedMentions;
     if (opts.messageReference) {
-      content.reply = {
+      message.reply = {
         messageReference: opts.messageReference.messageId || "",
       };
     }
-    const msg = await this._postToThreadChannel(content);
+
+    const msg = await this._postToThreadChannel(message);
 
     threadMessage.inbox_message_id = msg.id;
     const finalThreadMessage = await threadMessage.saveToDb(this.db);
@@ -680,12 +700,13 @@ export class Thread {
       thread_id: this.id,
       message_type: ThreadMessageType.SystemToUser,
       user_name: "",
-      dm_channel_id: user.dmChannel?.id,
       body: text,
       is_anonymous: false,
     });
 
-    if (!user || !user.dmChannel) throw "failure!!!";
+    if (!user) throw `user (${this.user_id}) could not be retrieved`;
+    if (!user.dmChannel)
+      throw `user (${this.user_id}) DM channel could not be found`;
 
     const dmContent = formatters.formatSystemToUserDM(threadMessage);
     const dmMessage = await user.send({ content: dmContent });
@@ -700,7 +721,7 @@ export class Thread {
       threadMessage.inbox_message_id = inboxMsg.id;
     }
 
-    threadMessage.dm_channel_id = user.dmChannel?.id;
+    threadMessage.dm_channel_id = dmMessage.channelId;
     threadMessage.dm_message_id = dmMessage.id;
 
     await threadMessage.saveToDb(this.db);
@@ -723,6 +744,9 @@ export class Thread {
         ? msg.author.globalName || msg.author.username
         : msg.author.username,
       body: msg.content,
+      metadata: {
+        attachments: msg.attachments,
+      },
       is_anonymous: false,
       dm_message_id: msg.id,
     });
@@ -1114,6 +1138,206 @@ export class Thread {
     if (channel?.isSendable()) return channel;
 
     throw "it was impossible to retrieve the thread channel";
+  }
+
+  public async postInfoHeader(user: User, ignoreRequirements: boolean = false) {
+    const initialMessage = await (await this.getThreadChannel()).send(
+      `New thread from ${user.username} Loading details...`,
+    );
+
+    const embed = new EmbedBuilder();
+    if (user.avatarURL !== null) embed.setThumbnail(user.avatarURL());
+
+    // Find which main guilds this user is part of
+    const mainGuilds = getMainGuilds();
+    const userGuildData = new Map<
+      string,
+      { guild: Guild; member: GuildMember }
+    >();
+
+    for (const guild of mainGuilds) {
+      try {
+        const member = await guild.members.fetch(user.id);
+
+        if (member) {
+          userGuildData.set(guild.id, { guild, member });
+        }
+      } catch (e: unknown) {
+        // We can safely discard this error, because it just means we couldn't find the member in the guild
+        // Which - for obvious reasons - is completely okay.
+        if ((e as DiscordAPIError).code !== 10007) console.log(e);
+      }
+    }
+
+    const userLogCount = await getClosedThreadCountByUserId(this.db, user.id);
+    embed.setTitle(`Thread #${userLogCount + 1} with ${user.username}`);
+
+    if (userLogCount > 0) {
+      const mostRecentThread = await getLastClosedThreadByUser(
+        this.db,
+        user.id,
+      );
+      if (mostRecentThread) {
+        mostRecentThread.log_storage_type = "local";
+        const mostRecentLog = await getLogUrl(mostRecentThread);
+
+        embed.setDescription(
+          `${userLogCount} prior thread${userLogCount === 1 ? "" : "s"} [(view most recent)](${mostRecentLog})\n\nView prior logs with \`!logs\` or notes with \`!notes\``,
+        );
+      }
+    }
+
+    const infoHeaderItems = [];
+
+    // Account age
+    const diff = Date.now() - user.createdAt.getTime();
+    const accountAge = humanizeDuration(diff, {
+      largest: 2,
+      round: true,
+    });
+    infoHeaderItems.push(`ACCOUNT AGE **${accountAge}**`);
+
+    const guildJoins = [...userGuildData.values()].map(({ guild, member }) => {
+      let emoji = "💿";
+      if (guild.name.toLowerCase().includes("overwatch"))
+        emoji = Emoji.Overwatch;
+      if (guild.name.toLowerCase().includes("appeal")) emoji = Emoji.Banned;
+
+      return `${emoji} <t:${Math.round((member.joinedAt?.getTime() || 1000) / 1000)}:d>`;
+    });
+
+    embed.addFields({
+      name: "Joined",
+      value: `${Emoji.Discord} <t:${Math.round(user.createdAt.getTime() / 1000)}:d>${guildJoins.length > 0 ? " **•** " : ""}${guildJoins.join(" **•** ")}`,
+    });
+
+    const url = await getLogUrl(this);
+
+    embed.addFields([
+      {
+        name: "Log Link",
+        value: `[View Live](${url})`,
+        inline: true,
+      },
+      {
+        name: "User ID",
+        value: user.id,
+        inline: true,
+      },
+    ]);
+
+    // User id (and mention, if enabled)
+    if (config.mentionUserInThreadHeader) {
+      infoHeaderItems.push(`ID **${user.id}** (<@!${user.id}>)`);
+    } else {
+      infoHeaderItems.push(`ID **${user.id}**`);
+    }
+
+    let infoHeader = infoHeaderItems.join(", ");
+
+    // If set in config, check that the user has been a member of one of the main guilds long enough
+    // If they haven't, don't start a new thread and optionally reply to them with a message
+    if (config.requiredTimeOnServer && !ignoreRequirements) {
+      // The minimum required time required on the server
+      const timeRequired = new Date();
+      timeRequired.setTime(
+        timeRequired.getTime() - config.requiredTimeOnServer * (60 * 1000),
+      );
+
+      // Check if the user joined any of the main servers a long enough time ago
+      // If we don't see this user on any of the main guilds (the size check below), assume we're just missing some data and give the user the benefit of the doubt
+      const isAllowed =
+        userGuildData.size === 0 ||
+        Array.from(userGuildData.values()).some(({ member }) => {
+          return (member.joinedAt || new Date()) < timeRequired;
+        });
+
+      if (!isAllowed) {
+        if (config.timeOnServerDeniedMessage) {
+          const timeOnServerDeniedMessage = readMultilineConfigValue(
+            config.timeOnServerDeniedMessage,
+          );
+          const privateChannel = user.dmChannel;
+          if (privateChannel) {
+            await privateChannel.send(timeOnServerDeniedMessage);
+          }
+        }
+        return null;
+      }
+    }
+
+    // Guild member info
+    for (const [_guildId, guildData] of userGuildData.entries()) {
+      const nickname =
+        guildData.member.nickname || config.useDisplaynames
+          ? guildData.member.user.globalName
+          : guildData.member.user.username;
+
+      const headerItems = [
+        {
+          name: "Display Name",
+          value: escapeMarkdown(nickname || guildData.member.user.username),
+        },
+      ];
+
+      if (guildData.member.voice.channelId) {
+        const voiceChannel = guildData.guild.channels.fetch(
+          guildData.member.voice.channelId,
+        );
+
+        if (voiceChannel && voiceChannel instanceof VoiceChannel) {
+          headerItems.push({
+            name: "Voice Channel",
+            value: escapeMarkdown(voiceChannel.name),
+          });
+        }
+      }
+
+      await guildData.member.fetch();
+      if (config.rolesInThreadHeader && guildData.member.roles.cache.size > 0) {
+        const roles = guildData.member.roles.cache
+          .map((r) =>
+            r.name === "Muted" ? `${Emoji.Muted} ${r.name}` : r.name,
+          )
+          .filter((c) => c !== "@everyone");
+
+        headerItems.push({
+          name: "Roles",
+          value: roles.join(", "),
+        });
+      }
+
+      embed.addFields([
+        {
+          name: `**${escapeMarkdown(guildData.guild.name)}**`,
+          value: headerItems.map((e) => `**${e.name}**: ${e.value}`).join(", "),
+        },
+      ]);
+    }
+
+    embed.setFooter({
+      text: `Thread ${this.id}`,
+    });
+
+    infoHeader += "\n────────────────";
+
+    await initialMessage.edit({
+      content: "",
+      embeds: [embed],
+    });
+
+    await new ThreadMessage({
+      thread_id: this.id,
+      message_type: ThreadMessageType.System,
+      user_id: undefined,
+      user_name: "",
+      body: infoHeader,
+      metadata: {
+        embeds: [embed],
+      },
+      inbox_message_id: initialMessage.id,
+      is_anonymous: false,
+    }).saveToDb(this.db);
   }
 }
 

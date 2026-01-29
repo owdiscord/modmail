@@ -119,7 +119,7 @@
 
 		"inboxServerPermission": {
 			"$ref": "#/definitions/stringArray",
-			"default": ["manageMessages"]
+			"default": ["ManageMessages"]
 		},
 		"alwaysReply": {
 			"$ref": "#/definitions/customBoolean",

@@ -1,4 +1,5 @@
 import type { ModuleProps } from "../plugins";
+import { Emoji } from "../style";
 
 export default ({ config, commands }: ModuleProps) => {
   commands.addInboxThreadCommand(
@@ -10,12 +11,12 @@ export default ({ config, commands }: ModuleProps) => {
       if ((args.opt as string).startsWith("c")) {
         await thread.removeAlert(msg.author.id);
         await thread.postSystemMessage(
-          ":red_circle: Cancelled new message alert",
+          `${Emoji.CheckBadge} Cancelled new message alert`,
         );
       } else {
         await thread.addAlert(msg.author.id);
         await thread.postSystemMessage(
-          `:red_circle: Pinging ${msg.member?.nickname || config.useDisplaynames ? msg.author.globalName || msg.author.username : msg.author.username} when this thread gets a new reply`,
+          `${Emoji.Alert} Pinging ${msg.member?.nickname || config.useDisplaynames ? msg.author.globalName || msg.author.username : msg.author.username} when this thread gets a new reply`,
         );
       }
     },
