@@ -1226,21 +1226,19 @@ export class Thread {
     }
 
     let muteStatus = false;
-    // TODO: Clean this up so it's not so hard-coded
-    let banStatus = false;
-    try {
-      const ban = await userGuildData
-        .get("94882524378968064")
-        ?.guild.bans.fetch(user.id);
-      if (ban) banStatus = true;
-    } catch (err: unknown) {
-      // Unknown Ban - user is not banned
-      if (err instanceof DiscordAPIError && err.code === 10026) {
-        return false;
-      }
-
-      throw err;
-    }
+    // try {
+    //   const ban = await userGuildData
+    //     .get("94882524378968064")
+    //     ?.guild.bans.fetch(user.id);
+    //   if (ban) banStatus = true;
+    // } catch (err: unknown) {
+    //   // Unknown Ban - user is not banned
+    //   if (err instanceof DiscordAPIError && err.code === 10026) {
+    //     return false;
+    //   }
+    //
+    //   throw err;
+    // }
 
     const pronouns: Array<string> = [];
     const roles: Array<string> = [];
@@ -1381,7 +1379,10 @@ export class Thread {
         },
       ]);
 
-    if (banStatus) {
+    if (
+      userGuildData.has("587215460127473703") &&
+      !userGuildData.has("94882524378968064")
+    ) {
       embed.setColor(Colours.Red as HexColorString);
       embed.addFields([
         {
