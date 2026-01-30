@@ -44,7 +44,6 @@ import {
   type ReplyOptions,
   type SendableChannels,
   type User,
-  VoiceChannel,
   type HexColorString,
 } from "discord.js";
 import humanizeDuration from "humanize-duration";
@@ -1275,8 +1274,7 @@ export class Thread {
             else if (role.name.includes("He/Him")) pronouns.push("he/him");
             else if (role.name.includes("They/Them"))
               pronouns.push("they/them");
-            else if (role.name.includes("Any Pronouns"))
-              pronouns.push("any/all");
+            else if (role.name.includes("Any Pronouns")) pronouns.push("any");
             else if (role.name.includes("Muted")) muteStatus = true;
 
             const modmailRole = localRole(role.name);
@@ -1291,12 +1289,6 @@ export class Thread {
             .map((r) => r.name)
             .join(", "),
         });
-
-        let emoji = "💿";
-        if (guildData.guild.name.toLowerCase().includes("overwatch"))
-          emoji = Emoji.Overwatch;
-        if (guildData.guild.name.toLowerCase().includes("appeal"))
-          emoji = Emoji.Appeals;
 
         if (!userBanned) {
           const rolesForDisplay = sortRoles(roles)
@@ -1316,7 +1308,7 @@ export class Thread {
 
           embed.addFields([
             {
-              name: `${emoji}${draysLittlePreciousSpace}${escapeMarkdown(nickname || guildData.member.user.username)}${pronouns.length > 0 ? `  •  (${pronouns.join("/")})` : ""}`,
+              name: `${escapeMarkdown(nickname || guildData.member.user.username)}${pronouns.length > 0 ? `  •  (${pronouns.join("/")})` : ""}`,
               value:
                 rolesForDisplay.length > 0
                   ? `${roleEmoji(roles[0] || "")}${draysLittlePreciousSpace}${rolesForDisplay}`
