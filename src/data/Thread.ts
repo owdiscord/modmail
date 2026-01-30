@@ -44,7 +44,6 @@ import {
   type ReplyOptions,
   type SendableChannels,
   type User,
-  type HexColorString,
 } from "discord.js";
 import humanizeDuration from "humanize-duration";
 import config from "../cfg";
@@ -1164,19 +1163,20 @@ export class Thread {
     });
     infoHeaderItems.push(`ACCOUNT AGE **${accountAge}**`);
 
-    const guildJoins = [...userGuildData.values()].map(({ guild, member }) => {
-      let emoji = "💿";
-      if (guild.name.toLowerCase().includes("overwatch"))
-        emoji = Emoji.Overwatch;
-      if (guild.name.toLowerCase().includes("appeal")) emoji = Emoji.Appeals;
+    const userBanned =
+      userGuildData.has("587215460127473703") &&
+      !userGuildData.has("94882524378968064");
 
-      return `${emoji} <t:${Math.round((member.joinedAt?.getTime() || 1000) / 1000)}:d>`;
-    });
+    const serverJoin = userBanned
+      ? userGuildData.get("587215460127473703")?.member.joinedAt?.getTime() ||
+        1000
+      : userGuildData.get("94882524378968064")?.member.joinedAt?.getTime() ||
+        1000;
 
     embed.addFields([
       {
         name: "Joined",
-        value: `${Emoji.Discord} <t:${Math.round(user.createdAt.getTime() / 1000)}:d>${guildJoins.length > 0 ? " **•** " : ""}${guildJoins.join(" **•** ")}`,
+        value: `${Emoji.Discord} <t:${Math.round(user.createdAt.getTime() / 1000)}:d><t:${Math.round(serverJoin) / 1000}:d>`,
         inline: true,
       },
       {
@@ -1225,14 +1225,11 @@ export class Thread {
     }
 
     let muteStatus = false;
-    const pronouns: Array<string> = [];
+    let pronouns: Array<string> = [];
     const roles: Array<string> = [];
-    const userBanned =
-      userGuildData.has("587215460127473703") &&
-      !userGuildData.has("94882524378968064");
 
     // Guild member info
-    for (const [_guildId, guildData] of userGuildData.entries()) {
+    for (const [guildId, guildData] of userGuildData.entries()) {
       const nickname =
         guildData.member.nickname || config.useDisplaynames
           ? guildData.member.user.globalName
@@ -1306,15 +1303,20 @@ export class Thread {
             )
             .join(", ");
 
-          embed.addFields([
-            {
-              name: `${escapeMarkdown(nickname || guildData.member.user.username)}${pronouns.length > 0 ? `  •  (${pronouns.join("/")})` : ""}`,
-              value:
-                rolesForDisplay.length > 0
-                  ? `${roleEmoji(roles[0] || "")}${draysLittlePreciousSpace}${rolesForDisplay}`
-                  : "",
-            },
-          ]);
+          // If they have Any Pronouns, default to only showing any.
+          if (pronouns.includes("any")) pronouns = ["any"];
+
+          if (guildId === "94882524378968064") {
+            embed.addFields([
+              {
+                name: `${escapeMarkdown(nickname || guildData.member.user.username)}${pronouns.length > 0 ? `  •  (${pronouns.join("/")})` : ""}`,
+                value:
+                  rolesForDisplay.length > 0
+                    ? `${roleEmoji(roles[0] || "")}${draysLittlePreciousSpace}${rolesForDisplay}`
+                    : "",
+              },
+            ]);
+          }
         }
       }
 
@@ -1354,20 +1356,27 @@ export class Thread {
       embed.setDescription("No previous threads");
     }
 
-    if (muteStatus)
+    if (muteStatus) {
+      if (Colours.MuteRed) embed.setColor(Colours.MuteRed);
+
       embed.addFields([
         {
           name: `${Emoji.Muted} **This user is currently muted**\n`,
           value: "** **",
         },
       ]);
+    }
 
     if (userBanned) {
-      embed.setColor(Colours.Red as HexColorString);
+      if (Colours.BanRed) embed.setColor(Colours.BanRed);
+      const banTime = userBanned
+        ? `<t:userGuildData.get("94882524378968064")?.guild.bans.fetch(user.id):d>`
+        : "an unknown time";
+
       embed.addFields([
         {
           name: `${Emoji.Banned} **This user is currently banned**\n`,
-          value: "** **",
+          value: `Banned at ${banTime}`,
         },
       ]);
     }

@@ -1,3 +1,5 @@
+import type { ColorResolvable, HexColorString } from "discord.js";
+
 export const Emoji = {
   CheckBadge: "<:Official:944773335882031175>",
   Megaphone: "📣",
@@ -37,8 +39,10 @@ export const Emoji = {
   },
 };
 
-export const Colours = {
+export const Colours: Record<string, ColorResolvable> = {
   Red: "#DA3E44",
+  BanRed: "#ED4446",
+  MuteRed: "#E64E3D",
   Orange: "#F06414",
 };
 
