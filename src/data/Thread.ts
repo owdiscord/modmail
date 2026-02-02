@@ -1134,7 +1134,6 @@ export class Thread {
   public async sendInfoHeader(
     user: User,
     userGuildData: Map<string, { guild: Guild; member: GuildMember }>,
-    ignoreRequirements: boolean = false,
   ): Promise<boolean> {
     const embed = new EmbedBuilder();
     if (user.avatarURL !== null) embed.setThumbnail(user.avatarURL());
@@ -1233,35 +1232,6 @@ export class Thread {
     }
 
     let infoHeader = infoHeaderItems.join(", ");
-
-    // If set in config, check that the user has been a member of one of the main guilds long enough
-    // If they haven't, don't start a new thread and optionally reply to them with a message
-    if (config.requiredTimeOnServer && !ignoreRequirements) {
-      // The minimum required time required on the server
-      const timeRequired = new Date();
-      timeRequired.setTime(
-        timeRequired.getTime() - config.requiredTimeOnServer * (60 * 1000),
-      );
-
-      // Check if the user joined any of the main servers a long enough time ago
-      // If we don't see this user on any of the main guilds (the size check below), assume we're just missing some data and give the user the benefit of the doubt
-      const isAllowed =
-        userGuildData.size === 0 ||
-        Array.from(userGuildData.values()).some(({ member }) => {
-          return (member.joinedAt || new Date()) < timeRequired;
-        });
-
-      if (!isAllowed) {
-        if (config.timeOnServerDeniedMessage) {
-          const timeOnServerDeniedMessage = readMultilineConfigValue(
-            config.timeOnServerDeniedMessage,
-          );
-
-          await user.send(timeOnServerDeniedMessage);
-        }
-        return false;
-      }
-    }
 
     const userBanned = guildStatus.ban !== null && guildStatus.main === null;
 
