@@ -7,6 +7,7 @@ import bot from "./bot";
 import { getPrettyVersion } from "./botVersion";
 import cfg from "./cfg";
 import { start } from "./main";
+import { migrateAllUp } from "./migrate";
 import { PluginInstallationError } from "./PluginInstallationError";
 import web from "./web";
 
@@ -120,6 +121,7 @@ modules.forEach((mod) => {
 	// 	await knex.migrate.latest();
 	// 	console.log("Done!");
 	// }
+	await migrateAllUp();
 
 	// // Start the bot
 	start(bot);
