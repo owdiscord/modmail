@@ -1202,7 +1202,7 @@ export class Thread {
         .add("Oladele Green")
         .add("Helix Yellow");
       if (sortedRoles.some((el) => regularColours.has(el))) {
-        sortedRoles.filter((role) => role !== "regular");
+        sortedRoles = sortedRoles.filter((role) => role !== "regular");
       }
 
       const rolesForDisplay = sortedRoles
