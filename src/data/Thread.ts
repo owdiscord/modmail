@@ -1325,16 +1325,18 @@ export class Thread {
       embed.setDescription("No previous threads");
     }
 
-    if (muteStatus)
+    if (muteStatus) {
+      embed.setColor(Colours.MuteRed as HexColorString);
       embed.addFields([
         {
           name: `${Emoji.Muted} **User is currently muted**\n`,
           value: "",
         },
       ]);
+    }
 
     if (userBanned) {
-      embed.setColor(Colours.Red as HexColorString);
+      embed.setColor(Colours.BanRed as HexColorString);
       embed.addFields([
         {
           name: `${Emoji.Banned} **User is currently banned**\n`,
