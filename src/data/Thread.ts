@@ -1,10 +1,6 @@
 import bot from "../bot";
 import cfg from "../cfg";
-import {
-  chunkMessageLines,
-  messageContentIsWithinMaxLength,
-  readMultilineConfigValue,
-} from "../utils";
+import { chunkMessageLines, messageContentIsWithinMaxLength } from "../utils";
 
 const {
   autoAlertDelay: _autoAlertDelay,
@@ -1195,8 +1191,20 @@ export class Thread {
         if (modmailRole) roles.push(modmailRole);
       }
 
-      const rolesForDisplay = sortRoles(roles)
-        .filter((r) => r !== "Regular")
+      let sortedRoles = sortRoles(roles);
+
+      // Exclude "Regular" only if a regular role colour is included
+      const regularColours = new Set()
+        .add("Guillard Purple")
+        .add("Vishkar Blue")
+        .add("Kamori Teal")
+        .add("Oladele Green")
+        .add("Helix Yellow");
+      if (sortedRoles.some((el) => regularColours.has(el))) {
+        sortedRoles.filter((role) => role !== "regular");
+      }
+
+      const rolesForDisplay = sortedRoles
         .map((r) =>
           [
             "Guillard Purple",
@@ -1319,7 +1327,7 @@ export class Thread {
     if (muteStatus)
       embed.addFields([
         {
-          name: `${Emoji.Muted} **This user is currently muted**\n`,
+          name: `${Emoji.Muted} **User is currently muted**\n`,
           value: "** **",
         },
       ]);
@@ -1328,7 +1336,7 @@ export class Thread {
       embed.setColor(Colours.Red as HexColorString);
       embed.addFields([
         {
-          name: `${Emoji.Banned} **This user is currently banned**\n`,
+          name: `${Emoji.Banned} **User is currently banned**\n`,
           value: "** **",
         },
       ]);
