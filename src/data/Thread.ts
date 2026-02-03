@@ -40,6 +40,7 @@ import {
   type ReplyOptions,
   type SendableChannels,
   type User,
+  type EmbedField,
 } from "discord.js";
 import humanizeDuration from "humanize-duration";
 import config from "../cfg";
@@ -1145,24 +1146,27 @@ export class Thread {
     });
     infoHeaderItems.push(`ACCOUNT AGE **${accountAge}**`);
 
-    let join = `${Emoji.Overwatch} unknown`;
     const guildStatus = await userGuildStatus(bot, user);
 
-    if (guildStatus.ban && !guildStatus.main) {
-      const time = Math.round(
-        (guildStatus.ban.joinedTimestamp || Date.now()) / 1000,
-      );
-      join = `${Emoji.Appeals} <t:${time}:d>`;
-    }
+    const join = (() => {
+      if (guildStatus.ban && !guildStatus.main) {
+        const time = Math.round(
+          (guildStatus.ban.joinedTimestamp || Date.now()) / 1000,
+        );
+        return `${Emoji.Appeals} <t:${time}:d>`;
+      }
 
-    if (guildStatus.main) {
-      const time = Math.round(
-        (guildStatus.main.joinedTimestamp || Date.now()) / 1000,
-      );
-      join = `${Emoji.Overwatch} <t:${time}:d>`;
-    }
+      if (guildStatus.main) {
+        const time = Math.round(
+          (guildStatus.main.joinedTimestamp || Date.now()) / 1000,
+        );
+        return `${Emoji.Overwatch} <t:${time}:d>`;
+      }
 
-    embed.addFields([
+      return "Unknown";
+    })();
+
+    const fields: Array<EmbedField> = [
       {
         name: "Joined",
         value: `${Emoji.Discord} <t:${Math.round(user.createdAt.getTime() / 1000)}:d>${Spacing.Doublespace}**•**${Spacing.Doublespace}${join}`,
@@ -1173,7 +1177,9 @@ export class Thread {
         value: `\`${user.id}\``,
         inline: true,
       },
-    ]);
+    ];
+
+    const separator = (len: number = 16) => "".padStart(Math.min(len, 28), "⎽");
 
     // Grab roles, pronouns, and mute status from the main server (if they are in it!)
     let muteStatus = false;
@@ -1222,15 +1228,32 @@ export class Thread {
       // If they have Any Pronouns, default to only showing any.
       if (pronouns.includes("any")) pronouns = ["any"];
 
-      embed.addFields([
-        {
-          name: `${escapeMarkdown(guildStatus.main.nickname || guildStatus.main.user.username)}${pronouns.length > 0 ? `  •  (${pronouns.join("/")})` : ""}`,
-          value:
-            rolesForDisplay.length > 0
-              ? `${roleEmoji(roles[0] || "")}${Spacing.DraysPrecious}${rolesForDisplay}`
-              : "",
-        },
-      ]);
+      fields.push({
+        name: `${escapeMarkdown(guildStatus.main.nickname || guildStatus.main.user.username)}${pronouns.length > 0 ? `  •  (${pronouns.join("/")})` : ""}`,
+        value:
+          rolesForDisplay.length > 0
+            ? `${roleEmoji(roles[0] || "")}${Spacing.DraysPrecious}${rolesForDisplay}`
+            : "",
+        inline: false,
+      });
+
+      if (guildStatus.main.voice.channelId && !muteStatus) {
+        // const voiceChannel = await guildData.guild.channels.fetch(
+        // guildData.member.voice.channelId,
+        // );
+        const channel = await guildStatus.main.voice.channel?.fetch();
+
+        if (channel && channel.isVoiceBased()) {
+          if (fields[fields.length - 1])
+            fields[fields.length - 1]!.value +=
+              `\n-# ${separator(channel.name.length * 2)}`;
+          fields.push({
+            name: `In Voice Channel`,
+            value: `<#${channel.id}> (${channel.name})`,
+            inline: false,
+          });
+        }
+      }
     }
 
     // User id (and mention, if enabled)
@@ -1241,7 +1264,6 @@ export class Thread {
     }
 
     let infoHeader = infoHeaderItems.join(", ");
-
     const userBanned = guildStatus.ban !== null && guildStatus.main === null;
 
     // Guild member info
@@ -1268,13 +1290,6 @@ export class Thread {
             name: "Voice Channel",
             value: escapeMarkdown(voiceChannel.name),
           });
-
-          embed.addFields([
-            {
-              name: `${Emoji.Volume} User in VC`,
-              value: `<#${voiceChannel.id}> (${voiceChannel.name})`,
-            },
-          ]);
         }
       }
 
@@ -1327,24 +1342,29 @@ export class Thread {
 
     if (muteStatus) {
       embed.setColor(Colours.MuteRed as HexColorString);
-      embed.addFields([
-        {
-          name: `${Emoji.Muted} **User is currently muted**\n`,
-          value: "",
-        },
-      ]);
+      if (fields[fields.length - 1])
+        fields[fields.length - 1]!.value += `\n-# ${separator(20)}`;
+
+      fields.push({
+        name: `${Emoji.Muted} **User is currently muted**\n`,
+        value: "",
+        inline: false,
+      });
     }
 
     if (userBanned) {
       embed.setColor(Colours.BanRed as HexColorString);
-      embed.addFields([
-        {
-          name: `${Emoji.Banned} **User is currently banned**\n`,
-          value: "",
-        },
-      ]);
+      if (fields[fields.length - 1])
+        fields[fields.length - 1]!.value += `\n-# ${separator(20)}`;
+
+      fields.push({
+        name: `${Emoji.Banned} **User is currently banned**\n`,
+        value: "",
+        inline: false,
+      });
     }
 
+    embed.setFields(fields);
     infoHeader += "\n────────────────";
 
     const message = await (await this.getThreadChannel()).send({
