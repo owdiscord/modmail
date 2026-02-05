@@ -7,6 +7,11 @@ import * as utils from "./utils";
 
 const defaultFormatters = {
   formatStaffReplyDM(threadMessage: ThreadMessage) {
+    let content = threadMessage.body;
+
+    if (threadMessage.attachments) {
+      content += `\n\n${threadMessage.attachments.join("\n")}`;
+    }
     const roleName =
       config.overrideRoleNameDisplay ||
       threadMessage.role_name ||
@@ -17,9 +22,7 @@ const defaultFormatters = {
         ? `(${roleName}) ${threadMessage.user_name}`
         : threadMessage.user_name;
 
-    return modInfo
-      ? `**${modInfo}:** ${threadMessage.body}`
-      : threadMessage.body;
+    return modInfo ? `**${modInfo}:** ${content}` : content;
   },
 
   formatStaffReplyThreadMessage(threadMessage: ThreadMessage) {
@@ -118,9 +121,8 @@ const defaultFormatters = {
   formatSystemThreadMessage(threadMessage: ThreadMessage) {
     let result = threadMessage.body;
 
-    for (const link of threadMessage.attachments) {
-      result += `\n\n${link}`;
-    }
+    if (threadMessage.attachments)
+      result += `\n\n${threadMessage.attachments.join("\n")}`;
 
     return result;
   },
@@ -128,9 +130,8 @@ const defaultFormatters = {
   formatSystemToUserThreadMessage(threadMessage: ThreadMessage): string {
     let result = `**⚙️ ${bot.user?.username}:** ${threadMessage.body}`;
 
-    for (const link of threadMessage.attachments) {
-      result += `\n\n${link}`;
-    }
+    if (threadMessage.attachments)
+      result += `\n\n${threadMessage.attachments.join("\n")}`;
 
     return result;
   },
@@ -138,9 +139,8 @@ const defaultFormatters = {
   formatSystemToUserDM(threadMessage: ThreadMessage) {
     let result = threadMessage.body;
 
-    for (const link of threadMessage.attachments) {
-      result += `\n\n${link}`;
-    }
+    if (threadMessage.attachments)
+      result += `\n\n${threadMessage.attachments.join("\n")}`;
 
     return result;
   },
