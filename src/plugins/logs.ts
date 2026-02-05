@@ -63,7 +63,7 @@ export default ({ bot, db, config, commands, hooks }: ModuleProps) => {
 
     const threadLines = await Promise.all(
       userThreads.map(async (userThread) => {
-        const logUrl = await getSelfUrl(`/logs/${userThread.id}`);
+        const logUrl = await getSelfUrl(`logs/${userThread.id}`);
         const formattedLogUrl = logUrl
           ? `<${addOptQueryStringToUrl(logUrl, { verbose: (args.verbose as boolean) || false, simple: (args.simple as boolean) || false })}>`
           : `View log with \`${config.prefix}log ${userThread.thread_number}\``;
