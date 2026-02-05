@@ -3,7 +3,6 @@ import {
   type AttachmentBuilder,
   type Channel,
   ChannelType,
-  type Client,
   EmbedBuilder,
   type Guild,
   type GuildMember,
@@ -128,30 +127,19 @@ export function isStaff(member: GuildMember | null): boolean {
   });
 }
 
-export async function messageIsOnInboxServer(
-  client: Client,
-  msg: Message,
-): Promise<boolean> {
-  const channel = (await getOrFetchChannel(
-    client,
-    msg.channel.id,
-  )) as TextChannel;
+export async function messageIsOnInboxServer(msg: Message): Promise<boolean> {
+  const channel = await msg.channel.fetch();
   if (!channel || !("guild" in channel) || !channel.guild) return false;
   if (channel.guild.id !== getInboxGuild().id) return false;
+
   return true;
 }
 
-export async function messageIsOnMainServer(
-  client: Client,
-  msg: Message,
-): Promise<boolean> {
-  const channel = (await getOrFetchChannel(
-    client,
-    msg.channel.id,
-  )) as TextChannel | null;
+export async function messageIsOnMainServer(msg: Message): Promise<boolean> {
+  const channel = await msg.channel.fetch();
   if (!channel || !("guild" in channel) || !channel.guild) return false;
 
-  return getMainGuilds().some((g) => channel.guild?.id === g.id);
+  return channel.guild.id === config.overwatchGuildId;
 }
 
 export async function formatAttachment(
@@ -366,7 +354,9 @@ const MAX_MESSAGE_CONTENT_LENGTH = 2000;
 // https://discord.com/developers/docs/resources/channel#embed-limits
 const MAX_EMBED_CONTENT_LENGTH = 6000;
 
-export function messageContentIsWithinMaxLength(content: string | Message) {
+export function messageContentIsWithinMaxLength(
+  content: string | MessageCreateOptions,
+) {
   const check = {
     content: "",
   };
@@ -486,18 +476,18 @@ export function chunkMessageLines(str: string, maxChunkLength = 1990) {
   });
 }
 
-export async function getOrFetchChannel(
-  client: Client,
-  channelId: string,
-): Promise<Channel | null> {
-  return client.channels.fetch(channelId);
-}
+// export async function getOrFetchChannel(
+//   client: Client,
+//   channelId: string,
+// ): Promise<Channel | null> {
+//   return client.channels.fetch(channelId);
+// }
 
-export function messageContentToAdvancedMessageContent(
-  content: string | MessageCreateOptions,
-): MessageCreateOptions {
-  return typeof content === "string" ? { content } : content;
-}
+// export function messageContentToAdvancedMessageContent(
+//   content: string | MessageCreateOptions,
+// ): MessageCreateOptions {
+//   return typeof content === "string" ? { content } : content;
+// }
 
 export function slugify(from: string): string {
   return String(from)

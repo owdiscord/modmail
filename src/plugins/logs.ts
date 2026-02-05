@@ -1,15 +1,15 @@
-import { type Client, EmbedBuilder, type Message } from "discord.js";
+import { EmbedBuilder, type Message } from "discord.js";
 import { ThreadStatus } from "../data/constants";
 import { getLogFile, getLogUrl, saveLogToStorage } from "../data/logs";
 import type Thread from "../data/Thread";
 import * as threads from "../data/threads";
 import type { ModuleProps } from "../plugins";
 import { Emoji } from "../style";
-import { chunk, getOrFetchChannel, getSelfUrl } from "../utils";
+import { chunk, getSelfUrl } from "../utils";
 
 const LOG_LINES_PER_PAGE = 10;
 
-export default ({ bot, db, config, commands, hooks }: ModuleProps) => {
+export default ({ db, config, commands, hooks }: ModuleProps) => {
   const addOptQueryStringToUrl = (
     url: string,
     args: { verbose: boolean; simple: boolean },
@@ -34,7 +34,7 @@ export default ({ bot, db, config, commands, hooks }: ModuleProps) => {
     const userId = (args.userId as string) || thread?.user_id;
     if (!userId) return;
 
-    const channel = await getOrFetchChannel(bot, msg.channel.id);
+    const channel = await msg.channel.fetch();
     if (!channel || !channel.isSendable()) return;
     let userThreads = await threads.getClosedThreadsByUserId(db, userId);
 
@@ -115,7 +115,7 @@ export default ({ bot, db, config, commands, hooks }: ModuleProps) => {
       (await threads.findByThreadNumber(db, threadId as number));
     if (!thread) return;
 
-    const channel = await getOrFetchChannel(bot, msg.channel.id);
+    const channel = await msg.channel.fetch();
 
     if (!channel || !channel.isSendable()) return;
 
@@ -229,7 +229,7 @@ export default ({ bot, db, config, commands, hooks }: ModuleProps) => {
         return;
       }
 
-      threadInfoCmd(bot, msg, thread);
+      threadInfoCmd(msg, thread);
     },
     {},
   );
@@ -240,8 +240,8 @@ export default ({ bot, db, config, commands, hooks }: ModuleProps) => {
   });
 };
 
-async function threadInfoCmd(bot: Client, msg: Message, thread: Thread) {
-  const channel = await getOrFetchChannel(bot, msg.channel.id);
+async function threadInfoCmd(msg: Message, thread: Thread) {
+  const channel = await msg.channel.fetch();
   if (!channel || !channel.isSendable()) return;
 
   const embed = new EmbedBuilder();

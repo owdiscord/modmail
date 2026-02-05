@@ -27,7 +27,7 @@ export default ({ bot, db, config, commands }: ModuleProps) => {
    * When a staff member uses a snippet (snippet prefix + trigger word), find the snippet and post it as a reply in the thread
    */
   bot.on(Events.MessageCreate, async (msg) => {
-    if (!(await messageIsOnInboxServer(bot, msg))) return;
+    if (!(await messageIsOnInboxServer(msg))) return;
     if (!isStaff(msg.member)) return;
 
     if (

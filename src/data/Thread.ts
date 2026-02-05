@@ -26,7 +26,6 @@ import {
 import humanizeDuration from "humanize-duration";
 import bot from "../bot";
 import config from "../config";
-import { formatters } from "../formatters";
 import { callAfterNewMessageReceivedHooks } from "../hooks/afterNewMessageReceived";
 import { callAfterThreadCloseHooks } from "../hooks/afterThreadClose";
 import { callAfterThreadCloseScheduleCanceledHooks } from "../hooks/afterThreadCloseScheduleCanceled";
@@ -40,11 +39,7 @@ import {
   Spacing,
   sortRoles,
 } from "../style";
-import {
-  chunkMessageLines,
-  messageContentIsWithinMaxLength,
-  messageContentToAdvancedMessageContent,
-} from "../utils";
+import { chunkMessageLines, messageContentIsWithinMaxLength } from "../utils";
 import { convertDelayStringToMS } from "../utils/time";
 import { saveAttachment } from "./attachments";
 import { isBlocked } from "./blocked";
@@ -143,7 +138,7 @@ export class Thread {
     else this.metadata = {};
   }
 
-  async _postToThreadChannel(message: MessageCreateOptions): Promise<Message> {
+  async postToThreadChannel(message: MessageCreateOptions): Promise<Message> {
     try {
       const channel = await bot.channels.fetch(this.channel_id);
       if (!channel || !channel?.isSendable())
@@ -321,18 +316,14 @@ export class Thread {
       attachments: attachmentLinks,
     });
 
-    const dmContent = messageContentToAdvancedMessageContent(
-      formatters.formatStaffReplyDM(threadMessage),
-    );
+    const dmContent = threadMessage.formatAsStaffReplyDM();
 
     if (userMessageReference) {
       dmContent.reply = userMessageReference;
       // dmContent.allowedMentions = userMessageReference;
     }
 
-    const inboxContent = messageContentToAdvancedMessageContent(
-      formatters.formatStaffReplyThreadMessage(threadMessage),
-    );
+    const inboxContent = threadMessage.formatAsStaffReplyThreadMessage();
 
     if (messageReference) {
       inboxContent.reply = {
@@ -371,7 +362,7 @@ export class Thread {
     }
 
     // Show the reply in the inbox thread
-    const inboxMessage = await this._postToThreadChannel({
+    const inboxMessage = await this.postToThreadChannel({
       ...inboxContent,
       files,
     });
@@ -542,9 +533,7 @@ export class Thread {
     });
 
     // Show user reply in the inbox thread
-    const inboxContent = messageContentToAdvancedMessageContent(
-      formatters.formatUserReplyThreadMessage(threadMessage),
-    );
+    const inboxContent = threadMessage.formatAsUserReply();
 
     if (messageReply) {
       inboxContent.reply = {
@@ -554,7 +543,7 @@ export class Thread {
     }
 
     // Send message reply
-    const inboxMessage = await this._postToThreadChannel({
+    const inboxMessage = await this.postToThreadChannel({
       ...inboxContent,
       // files,
       embeds,
@@ -623,9 +612,7 @@ export class Thread {
       is_anonymous: false,
     });
 
-    const { content } = messageContentToAdvancedMessageContent(
-      formatters.formatSystemThreadMessage(threadMessage),
-    );
+    const { content } = threadMessage.formatAsSystem();
 
     message.content = opts.emptyContent ? "" : content;
 
@@ -636,7 +623,7 @@ export class Thread {
       };
     }
 
-    const msg = await this._postToThreadChannel(message);
+    const msg = await this.postToThreadChannel(message);
 
     threadMessage.inbox_message_id = msg.id;
     const finalThreadMessage = await threadMessage.saveToDb(this.db);
@@ -647,10 +634,6 @@ export class Thread {
     };
   }
 
-  /**
-   * @param {string} text
-   * @returns {Promise<ThreadMessage>}
-   */
   async addSystemMessageToLogs(text: string): Promise<ThreadMessage> {
     const threadMessage = new ThreadMessage({
       thread_id: this.id,
@@ -682,18 +665,17 @@ export class Thread {
 
     if (!user) throw `user (${this.user_id}) could not be retrieved`;
 
-    const dmContent = formatters.formatSystemToUserDM(threadMessage);
-    const dmMessage = await user.send({ content: dmContent }).catch((e) => {
-      throw `could not send a dm to the user: ${e}`;
-    });
+    const dmMessage = await user
+      .send(threadMessage.formatAsSystemToUserDM())
+      .catch((e) => {
+        throw `could not send a dm to the user: ${e}`;
+      });
 
     if (opts.postToThreadChannel !== false) {
-      const inboxContent = {
-        content: formatters.formatSystemToUserThreadMessage(threadMessage),
-        allowedMentions: opts.allowedMentions,
-      };
+      const inboxMessage = threadMessage.formatAsSystemToUserThreadMessage(bot);
+      inboxMessage.allowedMentions = opts.allowedMentions;
 
-      const inboxMsg = await this._postToThreadChannel(inboxContent);
+      const inboxMsg = await this.postToThreadChannel(inboxMessage);
       threadMessage.inbox_message_id = inboxMsg.id;
     }
 
@@ -706,7 +688,7 @@ export class Thread {
   async postNonLogMessage(
     message: MessageCreateOptions,
   ): Promise<Message | null> {
-    return this._postToThreadChannel(message);
+    return this.postToThreadChannel(message);
   }
 
   async saveChatMessageToLogs(msg: Message): Promise<void> {
@@ -946,8 +928,8 @@ export class Thread {
     });
 
     const formattedThreadMessage =
-      formatters.formatStaffReplyThreadMessage(newThreadMessage);
-    const formattedDM = formatters.formatStaffReplyDM(newThreadMessage);
+      newThreadMessage.formatAsStaffReplyThreadMessage();
+    const formattedDM = newThreadMessage.formatAsStaffReplyDM();
 
     // Same restriction as in replies. Because edits could theoretically change the number of messages a reply takes, we enforce replies
     // to fit within 1 message to avoid the headache and issues caused by that.
@@ -968,14 +950,18 @@ export class Thread {
 
     if (threadChannel?.isSendable()) {
       const message = await threadChannel.messages.fetch(dm_message_id);
-      message.edit(formattedDM);
+      message.edit({
+        content: formattedDM.content,
+      });
     }
 
     // Edit the inbox (mod side) message
     const inboxChannel = await bot.channels.fetch(this.channel_id);
     if (inboxChannel?.isSendable()) {
       const message = await inboxChannel.messages.fetch(inbox_message_id);
-      message.edit(formattedThreadMessage);
+      message.edit({
+        content: formattedThreadMessage.content,
+      });
     }
 
     if (!quiet) {
@@ -991,13 +977,10 @@ export class Thread {
         },
       });
 
-      const threadNotification =
-        formatters.formatStaffReplyEditNotificationThreadMessage(
-          editThreadMessage,
-        );
-      const inboxMessage = await this._postToThreadChannel({
-        content: threadNotification,
-      });
+      const threadNotification = editThreadMessage.formatAsStaffReplyEdit();
+      if (!threadNotification) return false;
+
+      const inboxMessage = await this.postToThreadChannel(threadNotification);
       editThreadMessage.inbox_message_id = inboxMessage.id;
       await editThreadMessage.saveToDb(this.db);
     }
@@ -1031,12 +1014,11 @@ export class Thread {
       deletionThreadMessage.metadata.originalThreadMessage = threadMessage;
 
       const threadNotification =
-        formatters.formatStaffReplyDeletionNotificationThreadMessage(
-          deletionThreadMessage,
-        );
-      const inboxMessage = await this._postToThreadChannel({
-        content: threadNotification,
-      });
+        deletionThreadMessage.formatAsStaffReplyDeletion();
+
+      if (!threadNotification) return;
+
+      const inboxMessage = await this.postToThreadChannel(threadNotification);
       deletionThreadMessage.inbox_message_id = inboxMessage.id;
 
       await deletionThreadMessage.saveToDb(this.db);

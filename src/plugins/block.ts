@@ -3,7 +3,7 @@ import humanizeDuration from "humanize-duration";
 import * as blocked from "../data/blocked";
 import type Thread from "../data/Thread";
 import type { ModuleProps } from "../plugins";
-import { getLogChannel, getOrFetchChannel, noop } from "../utils";
+import { getLogChannel, noop } from "../utils";
 
 export default ({ bot, config, commands }: ModuleProps) => {
   if (!config.allowBlock) return;
@@ -44,7 +44,7 @@ export default ({ bot, config, commands }: ModuleProps) => {
     const userIdToBlock = (args.userId as string) || thread?.user_id;
     if (!userIdToBlock || !msg.channel.isSendable()) return;
 
-    const channel = await getOrFetchChannel(bot, msg.channel.id);
+    const channel = await msg.channel.fetch();
     if (!channel || !channel.isSendable()) return;
 
     const isBlocked = await blocked.isBlocked(userIdToBlock);

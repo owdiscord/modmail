@@ -9,9 +9,9 @@ import {
 } from "../data/displayRoles";
 import type Thread from "../data/Thread";
 import type { ModuleProps } from "../plugins";
-import { getInboxGuild, getOrFetchChannel, isSnowflake } from "../utils";
+import { getInboxGuild, isSnowflake } from "../utils";
 
-export default ({ bot, config, commands }: ModuleProps) => {
+export default ({ config, commands }: ModuleProps) => {
   if (!config.allowChangingDisplayRole) {
     return;
   }
@@ -111,7 +111,7 @@ export default ({ bot, config, commands }: ModuleProps) => {
 
   // Get default display role
   commands.addInboxServerCommand("role", [], async (msg, _args, _thread) => {
-    const channel = await getOrFetchChannel(bot, msg.channel.id);
+    const channel = await msg.channel.fetch();
     if (!msg.member || !channel || !channel.isSendable()) return;
 
     const displayRole = await getModeratorDefaultDisplayRoleName(msg.member);
@@ -127,7 +127,7 @@ export default ({ bot, config, commands }: ModuleProps) => {
     "role reset",
     [],
     async (msg, _args, _thread) => {
-      const channel = await getOrFetchChannel(bot, msg.channel.id);
+      const channel = await msg.channel.fetch();
       if (!msg.member || !channel || !channel.isSendable()) return;
 
       await resetModeratorDefaultRoleOverride(msg.member.id);
@@ -153,7 +153,7 @@ export default ({ bot, config, commands }: ModuleProps) => {
     "role",
     "<role:string$>",
     async (msg: Message, args: Record<string, unknown>, _thread?: Thread) => {
-      const channel = await getOrFetchChannel(bot, msg.channel.id);
+      const channel = await msg.channel.fetch();
       const role = await resolveRoleInput(args.role as string);
       if (!role || !msg.member || !channel || !channel.isSendable()) return;
 

@@ -1,4 +1,7 @@
 import type { SQL } from "bun";
+import type { Client, MessageCreateOptions } from "discord.js";
+import config from "../config";
+import { disableCodeBlocks, disableInlineCode, getTimestamp } from "../utils";
 import { ThreadMessageType } from "./constants";
 
 export type ThreadMessageProps = {
@@ -122,6 +125,152 @@ export class ThreadMessage {
         `[ThreadMessage::saveToDb@ThreadMessage.ts:138] failed to save thread_message to db: ${e}`,
       );
     }
+  }
+
+  public formatAsStaffReplyDM(): MessageCreateOptions {
+    let content = this.body;
+
+    if (this.attachments.length > 0)
+      content += `\n\n${this.attachments.join("\n")}`;
+
+    const roleName =
+      config.overrideRoleNameDisplay ||
+      this.role_name ||
+      config.fallbackRoleName;
+    const modInfo = this.is_anonymous
+      ? roleName
+      : roleName
+        ? `(${roleName}) ${this.user_name}`
+        : this.user_name;
+
+    return {
+      content: modInfo ? `**${modInfo}:** ${content}` : content,
+    };
+  }
+
+  public formatAsStaffReplyThreadMessage(): MessageCreateOptions {
+    const roleName =
+      config.overrideRoleNameDisplay ||
+      this.role_name ||
+      config.fallbackRoleName;
+    const modInfo = this.is_anonymous
+      ? roleName
+        ? `(Anonymous) (${this.user_name}) ${roleName}`
+        : `(Anonymous) (${this.user_name})`
+      : roleName
+        ? `(${roleName}) ${this.user_name}`
+        : this.user_name;
+
+    let result = modInfo ? `**${modInfo}:** ${this.body}` : this.body;
+
+    if (config.threadTimestamps) {
+      const formattedTimestamp = getTimestamp(this.created_at);
+      result = `[${formattedTimestamp}] ${result}`;
+    }
+
+    result = `\`${this.message_number}\`  ${result}`;
+
+    return {
+      content: result,
+    };
+  }
+
+  public formatAsUserReply(): MessageCreateOptions {
+    let result = `**${this.user_name}:** ${this.body}`;
+
+    if (this.attachments.length > 0)
+      result += `\n\n${this.attachments.join("\n")}`;
+
+    if (config.threadTimestamps) {
+      const formattedTimestamp = getTimestamp(this.created_at);
+      result = `[${formattedTimestamp}] ${result}`;
+    }
+
+    return {
+      content: result,
+    };
+  }
+
+  public formatAsSystem(): MessageCreateOptions {
+    let result = this.body;
+
+    if (this.attachments.length > 0)
+      result += `\n\n${this.attachments.join("\n")}`;
+
+    return {
+      content: result,
+    };
+  }
+
+  public formatAsSystemToUserThreadMessage(bot: Client): MessageCreateOptions {
+    let result = `**⚙️ ${bot.user?.username}:** ${this.body}`;
+
+    if (this.attachments.length > 0)
+      result += `\n\n${this.attachments.join("\n")}`;
+
+    return {
+      content: result,
+    };
+  }
+
+  public formatAsSystemToUserDM(): MessageCreateOptions {
+    let result = this.body;
+
+    if (this.attachments.length > 0)
+      result += `\n\n${this.attachments.join("\n")}`;
+
+    return {
+      content: result,
+    };
+  }
+
+  public formatAsStaffReplyEdit(): MessageCreateOptions | null {
+    const originalThreadMessage = this.getMetadataValue(
+      "originalThreadMessage",
+    );
+    if (
+      !originalThreadMessage ||
+      !(originalThreadMessage instanceof ThreadMessage)
+    )
+      return null;
+
+    const newBody = this.getMetadataValue("newBody") as string;
+
+    let content = `**${originalThreadMessage.user_name}** (\`${originalThreadMessage.user_id}\`) edited reply \`${originalThreadMessage.message_number}\``;
+
+    if (originalThreadMessage.body.length < 200 && newBody.length < 200) {
+      // Show edits of small messages inline
+      content += ` from \`${disableInlineCode(originalThreadMessage.body)}\` to \`${newBody}\``;
+    } else {
+      // Show edits of long messages in two code blocks
+      content += ":";
+      content += `\n\n\`B\`:\n\`\`\`${disableCodeBlocks(originalThreadMessage.body)}\`\`\``;
+      content += `\n\`A\`:\n\`\`\`${disableCodeBlocks(newBody)}\`\`\``;
+    }
+
+    return { content };
+  }
+  public formatAsStaffReplyDeletion(): MessageCreateOptions | null {
+    const originalThreadMessage = this.getMetadataValue(
+      "originalThreadMessage",
+    );
+    if (
+      !originalThreadMessage ||
+      !(originalThreadMessage instanceof ThreadMessage)
+    )
+      return null;
+
+    let content = `**${originalThreadMessage.user_name}** (\`${originalThreadMessage.user_id}\`) deleted reply \`${originalThreadMessage.message_number}\``;
+
+    if (originalThreadMessage.body.length < 200) {
+      // Show the original content of deleted small messages inline
+      content += ` (message content: \`${disableInlineCode(originalThreadMessage.body)}\`)`;
+    } else {
+      // Show the original content of deleted large messages in a code block
+      content += `:\n\`\`\`${disableCodeBlocks(originalThreadMessage.body)}\`\`\``;
+    }
+
+    return { content };
   }
 }
 

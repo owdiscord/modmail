@@ -120,8 +120,7 @@ export class Commands {
       aliases,
       preFilters: [
         async (_, context) => {
-          if (!(await messageIsOnInboxServer(this.bot, context.msg)))
-            return false;
+          if (!(await messageIsOnInboxServer(context.msg))) return false;
           if (!isStaff(context.msg.member)) return false;
           return true;
         },
@@ -156,8 +155,7 @@ export class Commands {
       aliases,
       preFilters: [
         async (_, context) => {
-          if (!(await messageIsOnInboxServer(this.bot, context.msg)))
-            return false;
+          if (!(await messageIsOnInboxServer(context.msg))) return false;
           if (!isStaff(context.msg.member)) return false;
           if (commandConfig.allowSuspended) {
             thread = await threads.findByChannelId(

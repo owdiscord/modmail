@@ -4,9 +4,9 @@ import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
 import { getMimeType } from "hono/utils/mime";
 import { getLocalAttachmentPath } from "./data/attachments";
+import { formatLog } from "./data/logs";
 import { findById } from "./data/threads";
 import { useDb } from "./db";
-import { formatters } from "./formatters";
 import { Thread } from "./web/view";
 
 const app = new Hono();
@@ -43,7 +43,7 @@ app.get("/logs/:id", async (c) => {
   }
 
   // if (simple || verbose) {
-  const formattedResult = formatters.formatLog(thread, messages, {
+  const formattedResult = formatLog(thread, messages, {
     simple,
     verbose,
   });

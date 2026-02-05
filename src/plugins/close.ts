@@ -137,7 +137,7 @@ export default ({ bot, config, commands, db }: ModuleProps) => {
         closedBy = "the user";
       } else {
         // A staff member is closing the thread
-        if (!(await messageIsOnInboxServer(bot, msg))) return;
+        if (!(await messageIsOnInboxServer(msg))) return;
         if (!isStaff(msg.member)) return;
 
         thread = await threads.findOpenThreadByChannelId(db, msg.channel.id);

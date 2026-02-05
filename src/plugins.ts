@@ -10,8 +10,6 @@ import {
   getLogUrl,
   saveLogToStorage,
 } from "./data/logs";
-import * as threads from "./data/threads";
-import * as formats from "./formatters";
 import { afterNewMessageReceived } from "./hooks/afterNewMessageReceived";
 import { afterThreadClose } from "./hooks/afterThreadClose";
 import { afterThreadCloseScheduleCanceled } from "./hooks/afterThreadCloseScheduleCanceled";
@@ -59,8 +57,6 @@ export type ModuleProps = {
     afterThreadCloseScheduled: typeof afterThreadCloseScheduled;
     afterThreadCloseScheduleCanceled: typeof afterThreadCloseScheduleCanceled;
   };
-  formats: typeof formats;
-  threads: typeof threads;
   displayRoles: typeof displayRoles;
 };
 
@@ -126,8 +122,6 @@ export function createPluginProps({
       afterThreadCloseScheduled,
       afterThreadCloseScheduleCanceled,
     },
-    formats,
-    threads,
     displayRoles,
   };
 }

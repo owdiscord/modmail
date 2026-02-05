@@ -4,10 +4,8 @@ import {
   type Client,
   Events,
   type Guild,
-  type Message,
   MessageType,
 } from "discord.js";
-import { BotError } from "./BotError";
 import { createCommandManager } from "./commands";
 import config from "./config";
 import * as blocked from "./data/blocked";
@@ -15,11 +13,10 @@ import { ACCIDENTAL_THREAD_MESSAGES } from "./data/constants";
 import * as threads from "./data/threads";
 import { getAllOpenThreads } from "./data/threads";
 import { useDb } from "./db";
-import { formatters } from "./formatters";
 import { createPluginProps, loadPlugins } from "./plugins";
 import { messageQueue } from "./queue";
 import * as utils from "./utils";
-import { getOrFetchChannel } from "./utils";
+import { messageIsOnInboxServer } from "./utils";
 
 const db = useDb();
 
@@ -130,31 +127,19 @@ function initStatus(bot: Client) {
   setInterval(applyStatus, 60 * 60 * 1000);
 }
 
-async function messageIsOnInboxServer(bot: Client, msg: Message) {
-  const channel = msg.channel;
-  if (!channel || !channel.isTextBased) return false;
-
-  const guild = await bot.guilds.fetch(config.inboxServerId);
-  if (!guild) {
-    throw new BotError("The bot is not on the inbox server!");
-  }
-
-  return msg.guildId === config.inboxServerId;
-}
-
 function initBaseMessageHandlers(bot: Client) {
   bot.on(Events.MessageCreate, async (msg) => {
     if (msg.author.id === bot.user?.id) return;
 
     if (
-      (await utils.messageIsOnMainServer(bot, msg)) &&
+      (await utils.messageIsOnMainServer(msg)) &&
       msg.mentions.users.has(bot.user?.id || "") &&
       !msg.author.bot
     ) {
       /**
        * When the bot is mentioned on the main server, ping staff in the log channel about it
        */
-      if (await utils.messageIsOnInboxServer(bot, msg)) {
+      if (await utils.messageIsOnInboxServer(msg)) {
         // For same server setups, check if the person who pinged modmail is staff. If so, ignore the ping.
         if (utils.isStaff(msg.member)) return;
       } else {
@@ -234,7 +219,7 @@ function initBaseMessageHandlers(bot: Client) {
           await createdThread.receiveUserReply(msg);
         }
       }
-    } else if (await messageIsOnInboxServer(bot, msg)) {
+    } else if (await messageIsOnInboxServer(msg)) {
       /**
        * When a moderator posts in a modmail thread...
        * 1) If alwaysReply is enabled, reply to the user
@@ -281,7 +266,7 @@ function initBaseMessageHandlers(bot: Client) {
       if (msg.type !== MessageType.Default && msg.type !== MessageType.Reply)
         return; // Ignore pins etc.
 
-      const channel = await getOrFetchChannel(bot, msg.channel.id);
+      const channel = await msg.channel.fetch();
       if (!channel || !channel.isSendable()) return;
 
       if (await blocked.isBlocked(msg.author.id)) {
@@ -390,9 +375,7 @@ function initBaseMessageHandlers(bot: Client) {
 
         const threadMessageWithEdit = threadMessage.clone();
         threadMessageWithEdit.body = newContent;
-        const formatted = formatters.formatUserReplyThreadMessage(
-          threadMessageWithEdit,
-        );
+        const formatted = threadMessageWithEdit.formatAsUserReply();
 
         try {
           const channel = await bot.channels.fetch(thread.channel_id);
@@ -401,7 +384,10 @@ function initBaseMessageHandlers(bot: Client) {
             const message = await channel.messages.fetch(
               threadMessage.inbox_message_id,
             );
-            await message.edit(formatted);
+
+            await message.edit({
+              content: formatted.content,
+            });
           }
         } catch (e) {
           console.warn(e);
