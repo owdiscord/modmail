@@ -1,5 +1,5 @@
 import type { SQL } from "bun";
-import { type Client, Events, type Message } from "discord.js";
+import { type Client, type Message } from "discord.js";
 import {
   CommandManager,
   defaultParameterTypes,
@@ -21,22 +21,47 @@ import { convertDelayStringToMS } from "./utils/time";
 
 const prefix = config.prefix || "!";
 
-export type CommandHandler = (
+export type InboxCommandHandler = (
   msg: Message,
   args: Record<string | number | symbol, unknown>,
   thread?: Thread,
-) => void;
+) => void | Promise<void>;
+
+export type ThreadCommandHandler = (
+  msg: Message,
+  args: Record<string | number | symbol, unknown>,
+  thread: Thread,
+) => void | Promise<void>;
+
+export type GlobalCommandHandler = (
+  msg: Message,
+  args: Record<string | number | symbol, unknown>,
+) => void | Promise<void>;
+
+export type CommandContext = "thread" | "inbox" | "global";
+
+type HandlerRegistry = {
+  inbox: Map<number, InboxCommandHandler>;
+  thread: Map<number, ThreadCommandHandler>;
+  global: Map<number, GlobalCommandHandler>;
+};
 
 export class Commands {
   public manager: CommandManager<{ msg: Message }>;
-  private handlers: Record<number, CommandHandler> = {};
-  private aliasMap = new Map();
+  private handlers: HandlerRegistry;
+  private aliasMap = new Map<string, Set<string>>();
   private db: SQL;
   private bot: Client;
 
   constructor(bot: Client) {
     this.bot = bot;
     this.db = useDb();
+    this.handlers = {
+      inbox: new Map(),
+      thread: new Map(),
+      global: new Map(),
+    };
+
     this.manager = new CommandManager<{ msg: Message }>({
       prefix,
       types: Object.assign({}, defaultParameterTypes, {
@@ -52,68 +77,77 @@ export class Commands {
         },
       }),
     });
+  }
 
-    bot.on(Events.MessageCreate, async (msg: Message) => {
-      if (msg.author.bot || msg.author.id === bot.user?.id || !msg.content)
-        return;
+  public async handleCommand(msg: Message, context: CommandContext) {
+    if (msg.author.bot || msg.author.id === this.bot.user?.id || !msg.content)
+      return;
 
-      const matchedCommand = await this.manager.findMatchingCommand(
-        msg.content,
-        {
-          msg,
-        },
-      );
-      if (!matchedCommand) return;
-      if (matchedCommand.error !== undefined) {
-        postError(msg.channel, matchedCommand.error);
-        return;
-      }
+    const matchedCommand = await this.manager.findMatchingCommand(msg.content, {
+      msg,
+    });
 
-      const allArgs: Record<string, unknown> = {};
-      for (const [name, arg] of Object.entries(matchedCommand.args)) {
-        allArgs[name] = arg.value;
-      }
-      for (const [name, opt] of Object.entries(matchedCommand.opts)) {
-        allArgs[name] = opt.value;
-      }
+    if (!matchedCommand) return;
+    if (matchedCommand.error !== undefined) {
+      postError(msg.channel, matchedCommand.error);
+      return;
+    }
 
-      const handler = this.handlers[matchedCommand.id];
+    const allArgs: Record<string, unknown> = {};
+    for (const [name, arg] of Object.entries(matchedCommand.args))
+      allArgs[name] = arg.value;
+
+    for (const [name, opt] of Object.entries(matchedCommand.opts))
+      allArgs[name] = opt.value;
+
+    // For thread context, we know thread exists due to preFilter
+    // For inbox context, thread might not exist
+    // For global context, no thread parameter
+    if (context === "thread") {
+      const handler = this.handlers.thread.get(matchedCommand.id);
       if (!handler) return;
 
-      handler(msg, allArgs);
-    });
+      // Thread is guaranteed to exist because of preFilter
+      const thread = await findOpenThreadByChannelId(this.db, msg.channel.id);
+      if (!thread) return; // Safety check (should never happen)
+      await handler(msg, allArgs, thread);
+    } else if (context === "inbox") {
+      const handler = this.handlers.inbox.get(matchedCommand.id);
+      if (!handler) return;
+
+      const thread = await findOpenThreadByChannelId(this.db, msg.channel.id);
+      await handler(msg, allArgs, thread === null ? undefined : thread);
+    } else {
+      const handler = this.handlers.global.get(matchedCommand.id);
+      if (!handler) return;
+
+      await handler(msg, allArgs);
+    }
   }
 
   public addGlobalCommand(
     trigger: string | RegExp,
     parameters: TParseableSignature | undefined,
-    handler: CommandHandler,
+    handler: GlobalCommandHandler,
     commandConfig: Record<string, unknown> = {},
   ) {
-    const aliases = this.aliasMap.has(trigger)
-      ? [...this.aliasMap.get(trigger)]
-      : [];
-    if (commandConfig.aliases)
-      aliases.push(...(commandConfig.aliases as Array<string>));
+    const aliases = this.getAliases(trigger, commandConfig);
 
     const cmd = this.manager.add(trigger, parameters, {
       ...commandConfig,
       aliases,
     });
-    this.handlers[cmd.id] = handler;
+
+    this.handlers.global.set(cmd.id, handler);
   }
 
   public addInboxServerCommand(
     trigger: string | RegExp,
     parameters: TParseableSignature | undefined,
-    handler: CommandHandler,
+    handler: InboxCommandHandler,
     commandConfig: Record<string, unknown> = {},
   ) {
-    const aliases = this.aliasMap.has(trigger)
-      ? [...this.aliasMap.get(trigger)]
-      : [];
-    if (commandConfig.aliases)
-      aliases.push(...(commandConfig.aliases as Array<string>));
+    const aliases = this.getAliases(trigger, commandConfig);
 
     const cmd = this.manager.add(trigger, parameters, {
       ...commandConfig,
@@ -127,28 +161,16 @@ export class Commands {
       ],
     });
 
-    this.handlers[cmd.id] = async (
-      msg: Message,
-      args: Record<string, unknown>,
-    ) => {
-      const thread = await findOpenThreadByChannelId(this.db, msg.channel.id);
-      handler(msg, args, thread || undefined);
-    };
+    this.handlers.inbox.set(cmd.id, handler);
   }
 
   public addInboxThreadCommand(
     trigger: string | RegExp,
     parameters: TParseableSignature | undefined,
-    handler: CommandHandler,
+    handler: ThreadCommandHandler, // Now properly typed to require Thread
     commandConfig: Record<string, unknown> = {},
   ) {
-    const aliases = this.aliasMap.has(trigger)
-      ? [...this.aliasMap.get(trigger)]
-      : [];
-    if (commandConfig.aliases)
-      aliases.push(...(commandConfig.aliases as Array<string>));
-
-    let thread: null | Thread;
+    const aliases = this.getAliases(trigger, commandConfig);
 
     const cmd = this.manager.add(trigger, parameters, {
       ...commandConfig,
@@ -157,29 +179,23 @@ export class Commands {
         async (_, context) => {
           if (!(await messageIsOnInboxServer(context.msg))) return false;
           if (!isStaff(context.msg.member)) return false;
-          if (commandConfig.allowSuspended) {
-            thread = await threads.findByChannelId(
-              this.db,
-              context.msg.channel.id,
-            );
-          } else {
-            thread = await threads.findOpenThreadByChannelId(
-              this.db,
-              context.msg.channel.id,
-            );
-          }
+
+          // Check if thread exists
+          const thread = (commandConfig.allowSuspended as boolean)
+            ? await threads.findByChannelId(this.db, context.msg.channel.id)
+            : await threads.findOpenThreadByChannelId(
+                this.db,
+                context.msg.channel.id,
+              );
+
+          // Reject if no thread found
           if (!thread) return false;
           return true;
         },
       ],
     });
 
-    this.handlers[cmd.id] = async (
-      msg: Message,
-      args: Record<string, unknown>,
-    ) => {
-      handler(msg, args, thread as Thread);
-    };
+    this.handlers.thread.set(cmd.id, handler);
   }
 
   public addAlias(originalCmd: string, alias: string) {
@@ -187,7 +203,23 @@ export class Commands {
       this.aliasMap.set(originalCmd, new Set());
     }
 
-    this.aliasMap.get(originalCmd).add(alias);
+    this.aliasMap.get(originalCmd)!.add(alias);
+  }
+
+  private getAliases(
+    trigger: string | RegExp,
+    commandConfig: Record<string, unknown>,
+  ): string[] {
+    const triggerKey = trigger.toString();
+    const aliases = this.aliasMap.has(triggerKey)
+      ? [...this.aliasMap.get(triggerKey)!]
+      : [];
+
+    if (commandConfig.aliases && Array.isArray(commandConfig.aliases)) {
+      aliases.push(...commandConfig.aliases);
+    }
+
+    return aliases;
   }
 }
 
