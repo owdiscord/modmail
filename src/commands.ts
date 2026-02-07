@@ -79,18 +79,22 @@ export class Commands {
     });
   }
 
-  public async handleCommand(msg: Message, context: CommandContext) {
+  public async handleCommand(
+    msg: Message,
+    context: CommandContext,
+  ): Promise<null | string> {
     if (msg.author.bot || msg.author.id === this.bot.user?.id || !msg.content)
-      return;
+      return null;
 
     const matchedCommand = await this.manager.findMatchingCommand(msg.content, {
       msg,
     });
 
-    if (!matchedCommand) return;
+    if (!matchedCommand) return "no command was matched";
     if (matchedCommand.error !== undefined) {
-      postError(msg.channel, matchedCommand.error);
-      return;
+      return matchedCommand.error;
+      // postError(msg.channel, matchedCommand.error);
+      // return;
     }
 
     const allArgs: Record<string, unknown> = {};
@@ -105,24 +109,26 @@ export class Commands {
     // For global context, no thread parameter
     if (context === "thread") {
       const handler = this.handlers.thread.get(matchedCommand.id);
-      if (!handler) return;
+      if (!handler) return null;
 
       // Thread is guaranteed to exist because of preFilter
       const thread = await findOpenThreadByChannelId(this.db, msg.channel.id);
-      if (!thread) return; // Safety check (should never happen)
+      if (!thread) return null; // Safety check (should never happen)
       await handler(msg, allArgs, thread);
     } else if (context === "inbox") {
       const handler = this.handlers.inbox.get(matchedCommand.id);
-      if (!handler) return;
+      if (!handler) return null;
 
       const thread = await findOpenThreadByChannelId(this.db, msg.channel.id);
       await handler(msg, allArgs, thread === null ? undefined : thread);
     } else {
       const handler = this.handlers.global.get(matchedCommand.id);
-      if (!handler) return;
+      if (!handler) return null;
 
       await handler(msg, allArgs);
     }
+
+    return null;
   }
 
   public addGlobalCommand(

@@ -21,6 +21,7 @@ import { sendCloseNotification } from "./plugins/close";
 import { handleSnippet } from "./plugins/snippets";
 import { messageQueue } from "./queue";
 import * as utils from "./utils";
+import { postError } from "./utils";
 
 const db = useDb();
 
@@ -305,16 +306,25 @@ async function handleInboxServerMessage(
     return;
   }
 
+  const errors: Array<string> = [];
+
   if (isCommand) {
     if (thread) {
       // Thread-specific command
-      await commands.handleCommand(msg, "thread");
+      const threadErr = await commands.handleCommand(msg, "thread");
+      if (threadErr) errors.push(threadErr);
       thread.saveCommandMessageToLogs(msg);
     }
 
     // Inbox server command (not in a thread)
-    await commands.handleCommand(msg, "inbox");
-    await commands.handleCommand(msg, "global");
+    const inboxErr = await commands.handleCommand(msg, "inbox");
+    if (inboxErr) errors.push(inboxErr);
+
+    const globalErr = await commands.handleCommand(msg, "global");
+    if (globalErr) errors.push(globalErr);
+
+    if (errors.length > 0) postError(msg.channel, errors[0] || "");
+
     return;
   }
 

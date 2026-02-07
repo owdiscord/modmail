@@ -6,6 +6,7 @@ import type { Thread as DBThread } from "../data/Thread";
 import type { ThreadMessage as DBThreadMessage } from "../data/ThreadMessage";
 import { findThreadLogByChannelID } from "../data/threads";
 import { useDb } from "../db";
+import { getRegisteredUsername, getStaffUsername } from "../data/Registration";
 
 const db = useDb();
 
@@ -235,7 +236,9 @@ const Embeds: FC<{ embeds: Array<Embed> }> = ({ embeds }) => {
   );
 };
 
-const OutgoingMessage: FC<{ msg: CollapsedThreadMessage }> = ({ msg }) => {
+const OutgoingMessage: FC<{ msg: CollapsedThreadMessage }> = async ({ msg }) => {
+  const displayName = await getRegisteredUsername(db, msg.user_id) || msg.user_name
+
   return (
     <li class="msg-row" data-message-type="from-user">
       <figure
@@ -245,7 +248,7 @@ const OutgoingMessage: FC<{ msg: CollapsedThreadMessage }> = ({ msg }) => {
       <div class="msg-content">
         <div class="msg-header">
           <p data-tooltip={msg.user_id} data-role={msg.role_name.toLowerCase()}>
-            {msg.user_name}
+            {displayName}
             <ShieldIcon />
             <span class="typeBadge">{messageType(msg.message_type)}</span>
           </p>
@@ -317,7 +320,9 @@ const _ToUser: FC<{ msg: CollapsedThreadMessage }> = ({ msg }) => {
   );
 };
 
-const InternalMessage: FC<{ msg: CollapsedThreadMessage }> = ({ msg }) => {
+const InternalMessage: FC<{ msg: CollapsedThreadMessage }> = async ({ msg }) => {
+  const displayName = await getRegisteredUsername(db, msg.user_id) || msg.user_name
+
   return (
     <li class="msg-row" data-message-type="internal">
       <figure
@@ -327,7 +332,7 @@ const InternalMessage: FC<{ msg: CollapsedThreadMessage }> = ({ msg }) => {
       <div class="msg-content">
         <div class="msg-header">
           <p data-tooltip={msg.user_id}>
-            {msg.user_name}
+            {displayName}
             <ShieldIcon />
             <span class="typeBadge">{messageType(msg.message_type)}</span>
           </p>
