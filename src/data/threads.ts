@@ -416,7 +416,9 @@ export async function findOrCreateThreadForUser(
   return createNewThreadForUser(db, user, opts);
 }
 
-export async function getThreadsThatShouldBeClosed(db: SQL) {
+export async function getThreadsThatShouldBeClosed(
+  db: SQL,
+): Promise<Array<Thread>> {
   const threads =
     await db`SELECT * FROM threads WHERE status = ${ThreadStatus.Open} AND scheduled_close_at IS NOT NULL AND scheduled_close_at <= now()`;
 

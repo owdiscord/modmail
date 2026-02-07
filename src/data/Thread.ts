@@ -56,6 +56,7 @@ import {
   getNextThreadMessageNumber,
 } from "./threads";
 import { userGuildStatus } from "./users";
+import { getStaffUsername } from "./Registration";
 
 const escapeFormattingRegex = /[_`~*|]/g;
 
@@ -70,7 +71,7 @@ export type ThreadProps = {
   scheduled_close_at?: Date;
   scheduled_close_id?: string;
   scheduled_close_name?: string;
-  scheduled_close_silent?: number;
+  scheduled_close_silent?: boolean;
   scheduled_suspend_at?: Date;
   scheduled_suspend_id?: string;
   scheduled_suspend_name?: string;
@@ -93,7 +94,7 @@ export class Thread {
   public scheduled_close_at: Date | null;
   public scheduled_close_id: string | null;
   public scheduled_close_name: string | null;
-  public scheduled_close_silent: number | null;
+  public scheduled_close_silent: boolean | null;
   public scheduled_suspend_at: Date | null;
   public scheduled_suspend_id: string | null;
   public scheduled_suspend_name: string | null;
@@ -169,7 +170,7 @@ export class Thread {
           console.log(
             `[INFO] Failed to send message to thread channel for ${this.user_name} because the channel no longer exists. Auto-closing the thread.`,
           );
-          this.close(true);
+          this.close("system", true);
         }
 
         if (err.code === 240000) {
@@ -215,13 +216,7 @@ export class Thread {
   ): Promise<boolean> {
     if (!moderator) return false;
 
-    const regularName = config.useDisplaynames
-      ? moderator.user.globalName || moderator.user.username
-      : moderator.user.username;
-    let moderatorName =
-      config.useNicknames && moderator.nickname
-        ? moderator.nickname
-        : regularName;
+    let moderatorName = await getStaffUsername(moderator);
     if (config.breakFormattingForNames) {
       moderatorName = moderatorName.replace(escapeFormattingRegex, "\\$&");
     }
@@ -793,7 +788,11 @@ export class Thread {
     throw "[findThreadMessageByMessageNumber@Thread.ts:838] could not get thread message";
   }
 
-  async close(suppressSystemMessage = false, silent = false): Promise<void> {
+  async close(
+    closed_by_id: string,
+    suppressSystemMessage = false,
+    silent = false,
+  ): Promise<void> {
     if (!suppressSystemMessage) {
       console.log(`Closing thread ${this.id}`);
 
@@ -806,7 +805,7 @@ export class Thread {
 
     // Update DB status
     await this
-      .db`UPDATE threads SET status = ${ThreadStatus.Closed} WHERE id = ${this.id}`;
+      .db`UPDATE threads SET status = ${ThreadStatus.Closed}, closed_by_id = ${closed_by_id}, closed_at = now() WHERE id = ${this.id}`;
 
     // Delete channel
     const channel = await bot.channels.fetch(this.channel_id);

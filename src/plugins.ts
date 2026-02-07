@@ -33,6 +33,7 @@ import roles from "./plugins/roles";
 import snippets from "./plugins/snippets";
 import suspend from "./plugins/suspend";
 import typingProxy from "./plugins/typingProxy";
+import staffRegistration from "./plugins/staffRegistration";
 
 export type ModuleProps = {
   bot: Client;
@@ -79,6 +80,7 @@ export function loadPlugins(props: ModuleProps) {
     snippets,
     suspend,
     typingProxy,
+    staffRegistration,
   ];
 
   for (const plugin of plugins) {

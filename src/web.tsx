@@ -43,7 +43,7 @@ app.get("/logs/:id", async (c) => {
   }
 
   // if (simple || verbose) {
-  const formattedResult = formatLog(thread, messages, {
+  const formattedResult = await formatLog(thread, messages, {
     simple,
     verbose,
   });

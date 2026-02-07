@@ -1,16 +1,10 @@
-import { DMChannel } from "discord.js";
-import * as blocked from "../data/blocked";
 import { ThreadMessageType } from "../data/constants";
 import { getLogCustomResponse, getLogFile, getLogUrl } from "../data/logs";
 import type Thread from "../data/Thread";
-import * as threads from "../data/threads";
 import { getThreadsThatShouldBeClosed } from "../data/threads";
 import type { ModuleProps } from "../plugins";
-import { messageQueue } from "../queue";
 import {
   humanizeDelay,
-  isStaff,
-  messageIsOnInboxServer,
   postLog,
   readMultilineConfigValue,
   trimAll,
@@ -27,7 +21,11 @@ export default ({ config, commands, db }: ModuleProps) => {
         await thread.sendSystemMessageToUser(closeMessage).catch(() => {});
       }
 
-      await thread.close(false, thread.scheduled_close_silent);
+      await thread.close(
+        thread.scheduled_close_id || "unknown",
+        false,
+        thread.scheduled_close_silent || undefined,
+      );
 
       await sendCloseNotification(
         thread,
@@ -123,7 +121,7 @@ export default ({ config, commands, db }: ModuleProps) => {
         await thread.sendSystemMessageToUser(closeMessage).catch(() => {});
       }
 
-      await thread.close(suppressSystemMessages, silentClose);
+      await thread.close(msg.author.id, suppressSystemMessages, silentClose);
 
       await sendCloseNotification(
         thread,
