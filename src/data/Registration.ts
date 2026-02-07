@@ -64,11 +64,21 @@ export async function getUserRegistrationName(
   return null;
 }
 
+export async function deleteUserRegistration(db: SQL, discord_id: string) {
+  return await db`DELETE FROM ${db(sql_table_name)} WHERE discord_id = ${discord_id}`;
+}
+
 export const userRegistrationCache: Record<string, string> = {};
 
 export async function cacheRegisteredUser(db: SQL, discord_id: string) {
   const registration = await getUserRegistrationName(db, discord_id);
   if (registration) userRegistrationCache[discord_id] = registration;
+}
+
+export async function deregisterUser(db: SQL, discord_id: string) {
+  delete userRegistrationCache[discord_id];
+
+  await deleteUserRegistration(db, discord_id);
 }
 
 export async function getRegisteredUsername(
@@ -79,6 +89,7 @@ export async function getRegisteredUsername(
   if (cached) return cached;
 
   const registration = await getUserRegistrationName(db, discord_id);
+  if (registration) userRegistrationCache[discord_id] = registration;
   return registration;
 }
 

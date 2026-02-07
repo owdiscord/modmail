@@ -304,9 +304,7 @@ export class Thread {
       message_number: await getNextThreadMessageNumber(this.db, this.id),
       user_id: moderator.id,
       dm_channel_id: dmChannel.id,
-      user_name: config.useDisplaynames
-        ? moderator.user.globalName || moderator.user.username
-        : moderator.user.username,
+      user_name: moderatorName,
       body: text,
       is_anonymous: isAnonymous,
       role_name: roleName,
