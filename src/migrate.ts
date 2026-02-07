@@ -65,13 +65,15 @@ async function getMigrationsFromFilesystem(): Promise<
   );
 }
 
-export async function migrateDown(migration: string) {
-  const applied = await getAppliedMigrations();
-  if (!applied.has(migration)) {
-    console.error(
-      "[migrate] the migration you attempted to down does not exist or has not been run",
-    );
-    process.exit(1);
+export async function migrateDown(migration: string, force = false) {
+  if (!force) {
+    const applied = await getAppliedMigrations();
+    if (!applied.has(migration)) {
+      console.error(
+        "[migrate] the migration you attempted to down does not exist or has not been run",
+      );
+      process.exit(1);
+    }
   }
 
   const migrations = await getMigrationsFromFilesystem();
@@ -110,18 +112,17 @@ export async function migrateAllUp() {
   let count = 0;
   for (const { name, up } of migrations) {
     if (!applied.has(name))
-      await db.begin(async (sql) => {
-        try {
+      try {
+        await db.begin(async (sql) => {
           await sql.unsafe(up);
           await sql`INSERT INTO ${sql(migrationTableName)} (name, batch, migration_time) VALUES (${name}, 1, now())`;
-        } catch (e) {
-          console.error(`[migrate] Failed to run ${name}:\n${e}`);
-          process.exit(1);
-        } finally {
-          console.log(`[migrate] Ran ${name}`);
-          count++;
-        }
-      });
+        });
+        console.log(`[migrate] Ran ${name}`);
+        count++;
+      } catch (e) {
+        console.error(`[migrate] Failed to run ${name}:\n${e}`);
+        process.exit(1);
+      }
   }
 
   if (count > 0)
@@ -157,7 +158,9 @@ if (import.meta.main) {
       process.exit(1);
     }
 
-    await migrateDown(args[1] || "");
+    const force = args[2] ? args[2] === "--force" : false;
+
+    await migrateDown(args[1] || "", force);
   }
 }
 
