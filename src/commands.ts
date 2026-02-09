@@ -85,7 +85,10 @@ export class Commands {
       msg,
     });
 
-    if (!matchedCommand) return "no command was matched";
+    if (!matchedCommand) {
+      console.log(`No match for ${msg.content} (sent  by ${msg.author.id})`);
+      return "No command matched your message, sorry!";
+    }
     if (matchedCommand.error !== undefined) {
       return matchedCommand.error;
       // postError(msg.channel, matchedCommand.error);

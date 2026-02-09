@@ -1429,7 +1429,7 @@ export class Thread {
     embed.addFields([
       {
         name: "Total Messages",
-        value: `-# **${msgStats.received}** Received, **${msgStats.replies}** Replies, **${msgStats.internal}** Internal`,
+        value: `-# **${msgStats.received}** User, **${msgStats.replies}** Replies, **${msgStats.internal}** Internal`,
         inline: true,
       },
       {
