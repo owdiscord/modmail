@@ -57,12 +57,13 @@ import {
 } from "./threads";
 import { userGuildStatus } from "./users";
 import { getStaffUsername } from "./Registration";
+import { v4 } from "uuid";
 
 const escapeFormattingRegex = /[_`~*|]/g;
 
 export type ThreadProps = {
-  id?: string;
-  thread_number: number;
+  id: string;
+  thread_number: number | null;
   status: number;
   user_id: string;
   user_name: string;
@@ -80,17 +81,19 @@ export type ThreadProps = {
   log_storage_data: object;
   created_at?: Date;
   metadata: string;
+  roles?: Array<string>;
+  server_join: Date;
 };
 
 export class Thread {
   private db: SQL;
-  public id!: string;
-  public thread_number!: number;
-  public status!: number;
-  public user_id!: string;
-  public user_name!: string;
-  public channel_id!: string;
-  public next_message_number!: number;
+  public id: string;
+  public thread_number: number | null;
+  public status: number;
+  public user_id: string;
+  public user_name: string;
+  public channel_id: string;
+  public next_message_number: number;
   public scheduled_close_at: Date | null;
   public scheduled_close_id: string | null;
   public scheduled_close_name: string | null;
@@ -98,9 +101,9 @@ export class Thread {
   public scheduled_suspend_at: Date | null;
   public scheduled_suspend_id: string | null;
   public scheduled_suspend_name: string | null;
-  public alert_ids!: string;
-  public log_storage_type!: LogStorageTypes;
-  public log_storage_data!:
+  public alert_ids: string;
+  public log_storage_type: LogStorageTypes;
+  public log_storage_data:
     | {
         fullPath?: string;
         filename: string;
@@ -109,11 +112,13 @@ export class Thread {
   public created_at: Date;
   public metadata: Record<string, unknown>;
   private _autoAlertTimeout: ReturnType<typeof setTimeout> | null = null;
+  public roles: Array<string> = [];
+  public server_join: Date;
 
   constructor(db: SQL, props: ThreadProps) {
     this.db = db;
-    if (props.id) this.id = props.id;
-    this.thread_number = props.thread_number;
+    this.id = props.id || v4();
+    this.thread_number = props.thread_number || null;
     this.status = props.status;
     this.user_id = props.user_id;
     this.user_name = props.user_name;
@@ -137,6 +142,9 @@ export class Thread {
       this.metadata = JSON.parse(props.metadata);
     else if (typeof props.metadata === "object") this.metadata = props.metadata;
     else this.metadata = {};
+
+    this.server_join = props.server_join;
+    if (props.roles) this.roles = props.roles;
   }
 
   async postToThreadChannel(message: MessageCreateOptions): Promise<Message> {

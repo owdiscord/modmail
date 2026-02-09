@@ -80,6 +80,8 @@ export type CreateNewThreadForUserOpts = {
   channelName?: string;
   source?: string;
   mentionRole?: string;
+  roles?: Array<string>;
+  server_join?: Date;
 };
 
 export async function createNewThreadForUser(
@@ -156,6 +158,8 @@ export async function createNewThreadForUser(
       string,
       { guild: Guild; member: GuildMember }
     >();
+
+    let serverJoin: Date | null = null;
 
     for (const guild of mainGuilds) {
       try {
@@ -268,6 +272,11 @@ export async function createNewThreadForUser(
       log_storage_type: "local",
       log_storage_data: {},
       metadata: "{}",
+      roles:
+        userGuildData
+          .get(config.overwatchGuildId)
+          ?.member.roles.cache.map((r) => r.name) || [],
+      server_join: serverJoin || new Date(),
     });
 
     const newThread = await findById(db, newThreadId);
@@ -305,22 +314,15 @@ export async function createNewThreadForUser(
 
 export async function createThreadInDB(
   db: SQL,
-  data: ThreadProps,
+  data: Omit<ThreadProps, "id">,
 ): Promise<string> {
-  data.id = v4();
+  const id = v4();
   data.created_at = new Date();
-  data.thread_number = 0;
-  const lastThreadNumber =
-    await db`SELECT thread_number FROM threads ORDER BY thread_number DESC LIMIT 1`;
-  if (lastThreadNumber?.[0]?.thread_number) {
-    data.thread_number = lastThreadNumber[0].thread_number + 1;
-  } else {
-    data.thread_number = 1;
-  }
+  data.thread_number = null;
 
-  await db`INSERT INTO threads ${db({ ...data, is_legacy: false })}`;
+  await db`INSERT INTO threads ${db({ ...data, id, is_legacy: false })}`;
 
-  return data.id;
+  return id;
 }
 
 /**
@@ -385,9 +387,11 @@ export async function findSuspendedThreadByChannelId(
 export async function getClosedThreadsByUserId(
   db: SQL,
   userId: string,
+  page = 1,
+  limit = 10,
 ): Promise<Thread[]> {
   const threads =
-    await db`SELECT * FROM threads WHERE user_id = ${userId} AND status = ${ThreadStatus.Closed}`;
+    await db`SELECT * FROM threads WHERE user_id = ${userId} AND status = ${ThreadStatus.Closed} ORDER BY created_at DESC LIMIT ${limit} OFFSET ${(page - 1) * limit}`;
 
   if (threads)
     return threads.map((thread: ThreadProps) => new Thread(db, thread));

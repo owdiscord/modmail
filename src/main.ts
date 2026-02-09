@@ -180,7 +180,7 @@ function initialiseListeners(bot: Client, commands: Commands) {
       await thread.sendSystemMessageToUser(closeMessage).catch(() => {});
     }
 
-    await thread.close(true);
+    await thread.close("", true);
 
     await sendCloseNotification(
       thread,

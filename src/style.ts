@@ -15,6 +15,7 @@ export const Emoji = {
   Schedule: "🕙",
   Notepad: "🗒️",
   Volume: "🔊",
+  Thread: "<:Thread:1470178732051533845>",
   Roles: {
     LFGTool: "<:LFGTool:1466324267279847454>",
     Grey: "<:RoleGrey:1466333333196771408>",
