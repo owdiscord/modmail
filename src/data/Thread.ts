@@ -39,7 +39,11 @@ import {
   Spacing,
   sortRoles,
 } from "../style";
-import { chunkMessageLines, messageContentIsWithinMaxLength } from "../utils";
+import {
+  chunkMessageLines,
+  getSelfUrl,
+  messageContentIsWithinMaxLength,
+} from "../utils";
 import { convertDelayStringToMS } from "../utils/time";
 import { saveAttachment } from "./attachments";
 import { isBlocked } from "./blocked";
@@ -54,9 +58,12 @@ import {
   getClosedThreadCountByUserId,
   getLastClosedThreadByUser,
   getNextThreadMessageNumber,
+  getThreadMessageStats,
+  getThreadStaffReplyCounts,
+  getUserThreadNumber,
 } from "./threads";
 import { userGuildStatus } from "./users";
-import { getStaffUsername } from "./Registration";
+import { getRegisteredUsername, getStaffUsername } from "./Registration";
 import { v4 } from "uuid";
 
 const escapeFormattingRegex = /[_`~*|]/g;
@@ -1363,6 +1370,73 @@ export class Thread {
     if (message) return true;
 
     return false;
+  }
+
+  public async getCloseEmbed(closer_id: string): Promise<EmbedBuilder | null> {
+    const user = await bot.users.fetch(this.user_id);
+    if (!user) return null;
+
+    const author =
+      bot.users.cache.get(closer_id) || (await bot.users.fetch(closer_id));
+    if (!author) return null;
+
+    const msgStats = await getThreadMessageStats(this.db, this.id);
+    if (!msgStats) return null;
+
+    const staffReplyData = await getThreadStaffReplyCounts(this.db, this.id);
+    let staffReplies: Array<string> = [];
+    if (staffReplyData)
+      staffReplies = await Promise.all(
+        staffReplyData.map(async (reply) => {
+          const registeredName = await getRegisteredUsername(
+            this.db,
+            reply.user_id,
+          );
+          const username = await (async () => {
+            if (!registeredName)
+              return (await bot.users.fetch(reply.user_id)).username;
+
+            return registeredName;
+          })();
+
+          return `${username} (${reply.msg_count})`;
+        }),
+      );
+
+    const embed = new EmbedBuilder();
+    const threadNumber = await getUserThreadNumber(
+      this.db,
+      user.id,
+      this.created_at,
+    );
+    embed.setTitle(`Thread #${threadNumber} with ${user.username} closed`);
+    embed.setDescription(
+      `-# \`${user.id}\`${Spacing.Doublespace}•${Spacing.Doublespace}[(View log)](${await this.logUrl()})`,
+    );
+    embed.setColor(Colours.BanRed as HexColorString);
+    embed.addFields([
+      {
+        name: "Closed By",
+        value: `-# ${Emoji.Roles.Moderator} ${(await getRegisteredUsername(this.db, author.id)) || author.username}`,
+        inline: true,
+      },
+      {
+        name: `Participants`,
+        value: `-# ${staffReplies.length > 0 ? staffReplies.join(", ") : "None"}`,
+        inline: true,
+      },
+      {
+        name: "Total Messages",
+        value: `-# **${msgStats.received}** Received, **${msgStats.replies}** Replies, **${msgStats.internal}** Internal`,
+        inline: true,
+      },
+    ]);
+
+    return embed;
+  }
+
+  public async logUrl(): Promise<string> {
+    return await getSelfUrl(`logs/${this.id}`);
   }
 }
 

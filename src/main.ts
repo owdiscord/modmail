@@ -17,7 +17,6 @@ import * as threads from "./data/threads";
 import { getAllOpenThreads } from "./data/threads";
 import { useDb } from "./db";
 import { createPluginProps, loadPlugins } from "./plugins";
-import { sendCloseNotification } from "./plugins/close";
 import { handleSnippet } from "./plugins/snippets";
 import { messageQueue } from "./queue";
 import * as utils from "./utils";
@@ -182,8 +181,8 @@ function initialiseListeners(bot: Client, commands: Commands) {
 
     await thread.close("", true);
 
-    await sendCloseNotification(
-      thread,
+    const logChannel = await utils.getLogChannel();
+    logChannel.send(
       `Modmail thread #${thread.thread_number} with ${thread.user_name} (${thread.user_id}) was closed automatically because the channel was deleted`,
     );
   });

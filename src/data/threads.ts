@@ -526,6 +526,69 @@ export async function getLastClosedThreadByUser(
   return null;
 }
 
+export type ThreadMessageStats = {
+  received: number;
+  replies: number;
+  internal: number;
+};
+
+export async function getThreadMessageStats(
+  db: SQL,
+  thread_id: String,
+): Promise<ThreadMessageStats | null> {
+  const result = await db<
+    Array<{ message_type: ThreadMessageType; msg_count: number }>
+  >`
+SELECT message_type, COUNT(*) msg_count FROM thread_messages WHERE thread_id = ${thread_id} GROUP BY message_type ORDER BY msg_count;`;
+
+  if (result && result.length > 1) {
+    const received =
+      result.find((r) => r.message_type === ThreadMessageType.FromUser)
+        ?.msg_count || 0;
+    const replies =
+      result.find((r) => r.message_type === ThreadMessageType.ToUser)
+        ?.msg_count || 0;
+    const internal =
+      result.find((r) => r.message_type === ThreadMessageType.Chat)
+        ?.msg_count || 0;
+
+    return {
+      received,
+      replies,
+      internal,
+    };
+  }
+
+  return null;
+}
+
+export async function getThreadStaffReplyCounts(
+  db: SQL,
+  thread_id: string,
+): Promise<null | Array<{ user_id: string; msg_count: number }>> {
+  const result = await db<
+    Array<{ user_id: string; msg_count: number }>
+  >`SELECT user_id, COUNT(*) msg_count FROM thread_messages WHERE thread_id = ${thread_id} AND message_type = ${ThreadMessageType.ToUser} GROUP BY user_id ORDER BY msg_count DESC`;
+
+  if (result) return result;
+
+  return null;
+}
+
+export async function getUserThreadNumber(
+  db: SQL,
+  user_id: string,
+  created_time: Date,
+): Promise<number> {
+  const result = await db<
+    Array<{ count: number }>
+  >`SELECT COUNT(*) count FROM threads WHERE user_id = ${user_id} AND created_at <= ${created_time}`;
+
+  if (result && result.length === 1) return result[0]?.count || 1;
+
+  return 1;
+}
+
 export function formatUsername(inputName: string): string {
   let channelName = String(inputName)
     .normalize("NFKD") // split accented characters into their base characters and diacritical marks

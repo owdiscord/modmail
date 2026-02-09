@@ -1,13 +1,9 @@
-import { ThreadMessageType } from "../data/constants";
-import { getLogCustomResponse, getLogFile, getLogUrl } from "../data/logs";
-import type Thread from "../data/Thread";
 import { getThreadsThatShouldBeClosed } from "../data/threads";
 import type { ModuleProps } from "../plugins";
 import {
+  getLogChannel,
   humanizeDelay,
-  postLog,
   readMultilineConfigValue,
-  trimAll,
 } from "../utils";
 import { getDelayFromArgs } from "../utils/time";
 
@@ -27,10 +23,16 @@ export default ({ config, commands, db }: ModuleProps) => {
         thread.scheduled_close_silent || undefined,
       );
 
-      await sendCloseNotification(
-        thread,
-        `Modmail thread #${thread.thread_number} with ${thread.user_name} (${thread.user_id}) was closed as scheduled by ${thread.scheduled_close_name} (${thread.scheduled_close_id})`,
-      );
+      const logChannel = await getLogChannel();
+      const embed = await thread.getCloseEmbed(thread.scheduled_close_id || "");
+      if (!embed)
+        return logChannel.send(
+          `Thread ${thread.id} closed by ${thread.scheduled_close_name}. ${await thread.logUrl()}`,
+        );
+
+      logChannel.send({
+        embeds: [embed],
+      });
     }
   }
 
@@ -123,10 +125,18 @@ export default ({ config, commands, db }: ModuleProps) => {
 
       await thread.close(msg.author.id, suppressSystemMessages, silentClose);
 
-      await sendCloseNotification(
-        thread,
-        `Modmail thread #${thread.thread_number} with ${thread.user_name} (${thread.user_id}) was closed by ${closedBy} (${msg.author.id})`,
-      );
+      const embed = await thread.getCloseEmbed(msg.author.id);
+      const logChannel = await getLogChannel();
+      if (!embed) {
+        logChannel.send(
+          `Thread #${thread.id} closed by ${msg.author.id}. ${await thread.logUrl()}`,
+        );
+        return;
+      }
+
+      logChannel.send({
+        embeds: [embed],
+      });
     },
     {
       options: [
@@ -136,60 +146,3 @@ export default ({ config, commands, db }: ModuleProps) => {
     },
   );
 };
-
-export async function sendCloseNotification(thread: Thread, body: string) {
-  const getMessagesAmounts = async () => {
-    const messages = await thread.getThreadMessages();
-    const chatMessages = [];
-    const toUserMessages = [];
-    const fromUserMessages = [];
-
-    messages.forEach((message) => {
-      switch (message.message_type) {
-        case ThreadMessageType.Chat:
-          chatMessages.push(message);
-          break;
-
-        case ThreadMessageType.ToUser:
-          toUserMessages.push(message);
-          break;
-
-        case ThreadMessageType.FromUser:
-          fromUserMessages.push(message);
-          break;
-      }
-    });
-
-    return [
-      `**${fromUserMessages.length}** message${fromUserMessages.length !== 1 ? "s" : ""} from the user`,
-      `, **${toUserMessages.length}** message${toUserMessages.length !== 1 ? "s" : ""} to the user`,
-      ` and **${chatMessages.length}** internal chat message${chatMessages.length !== 1 ? "s" : ""}.`,
-    ].join("");
-  };
-  const logCustomResponse = await getLogCustomResponse(thread);
-  if (logCustomResponse) {
-    postLog(body);
-    return;
-  }
-
-  body = `${body}\n${await getMessagesAmounts()}`;
-
-  const logUrl = await getLogUrl(thread);
-  if (logUrl) {
-    postLog(
-      trimAll(`
-          ${body}
-          Logs: ${logUrl}
-        `),
-    );
-    return;
-  }
-
-  const logFile = await getLogFile(thread);
-  if (logFile) {
-    postLog(body, [logFile]);
-    return;
-  }
-
-  postLog(body);
-}

@@ -54,13 +54,18 @@ export async function updateExpiryTime(
   return await db`UPDATE blocked_users SET expires_at = DATE_ADD(NOW(), INTERVAL ${expires_at * 1000} MICROSECOND) WHERE user_id = ${user_id}`;
 }
 
-export async function getExpiredBlocks(): Promise<string[]> {
+export async function getExpiredBlocks(): Promise<
+  Array<{ user_id: string; duration: number }>
+> {
   const now = new Date();
 
   const blockedUsers =
-    await db`SELECT * FROM blocked_users WHERE expires_at IS NOT NULL AND expires_at <= ${now}`;
+    await db`SELECT user_id, TIMESTAMPDIFF(MICROSECOND, blocked_at, expires_at) / 1000 duration FROM blocked_users WHERE expires_at IS NOT NULL AND expires_at <= ${now}`;
 
-  return blockedUsers.map((block: { user_id: string }) => block.user_id);
+  return blockedUsers.map((block: { user_id: string; duration: number }) => ({
+    user_id: block.user_id,
+    duration: block.duration,
+  }));
 }
 
 export async function getBlockedUsers(): Promise<

@@ -1,9 +1,10 @@
-import type { Message } from "discord.js";
+import { EmbedBuilder, type Message } from "discord.js";
 import humanizeDuration from "humanize-duration";
 import * as blocked from "../data/blocked";
 import type Thread from "../data/Thread";
 import type { ModuleProps } from "../plugins";
 import { getLogChannel, noop } from "../utils";
+import { Spacing } from "../style";
 
 export default ({ bot, config, commands }: ModuleProps) => {
   if (!config.allowBlock) return;
@@ -13,13 +14,18 @@ export default ({ bot, config, commands }: ModuleProps) => {
     if (expiredBlocks.length === 0) return;
 
     const logChannel = await getLogChannel();
-    for (const userId of expiredBlocks) {
-      await blocked.unblock(userId);
+    for (const { user_id, duration } of expiredBlocks) {
+      await blocked.unblock(user_id);
+      const user =
+        bot.users.cache.get(user_id) || (await bot.users.fetch(user_id));
       logChannel.send({
-        content: `Block of <@!${userId}> (id \`${userId}\`) expired`,
-        allowedMentions: {
-          users: [userId],
-        },
+        embeds: [
+          new EmbedBuilder()
+            .setTitle(`User ${user.username} unblocked`)
+            .setDescription(
+              `\`${user_id}\`${Spacing.Doublespace}•${Spacing.Doublespace}${humanizeDuration(duration)} elapsed`,
+            ),
+        ],
       });
     }
   }
