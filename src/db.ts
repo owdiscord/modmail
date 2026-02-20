@@ -13,6 +13,7 @@ export function useDb(): SQL {
     database: config.secrets.database.database,
     username: config.secrets.database.user,
     password: config.secrets.database.password,
+    prepare: false,
   });
 
   db`SET time_zone = '+00:00';`.catch((e) =>
