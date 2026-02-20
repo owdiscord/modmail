@@ -78,22 +78,22 @@ export default ({ bot, config, commands }: ModuleProps) => {
         `Blocked <@${userIdToBlock}> (id \`${userIdToBlock}\`) from modmail for ${humanized}`,
       );
 
-      const timedBlockMessage = config.timedBlockMessage || config.blockMessage;
-      if (timedBlockMessage) {
-        const formatted = timedBlockMessage
-          .replace(/\{duration}/g, humanized)
-          .replace(/\{timestamp}/g, expiresAt.toString());
-
-        await user.send(formatted).catch(noop);
-      }
+      // const timedBlockMessage = config.timedBlockMessage || config.blockMessage;
+      // if (timedBlockMessage) {
+      //   const formatted = timedBlockMessage
+      //     .replace(/\{duration}/g, humanized)
+      //     .replace(/\{timestamp}/g, expiresAt.toString());
+      //
+      //   await user.send(formatted).catch(noop);
+      // }
     } else {
       msg.channel.send(
         `Blocked <@${userIdToBlock}> (id \`${userIdToBlock}\`) from modmail indefinitely`,
       );
 
-      if (config.blockMessage != null) {
-        await user.send(config.blockMessage).catch(noop);
-      }
+      // if (config.blockMessage != null) {
+      //   await user.send(config.blockMessage).catch(noop);
+      // }
     }
   };
 
@@ -122,7 +122,6 @@ export default ({ bot, config, commands }: ModuleProps) => {
 
     const unblockAt = args.unblockDelay as number;
 
-    const user = await bot.users.fetch(userIdToUnblock);
     if (unblockAt) {
       const humanized = humanizeDuration(unblockAt, {
         largest: 2,
@@ -133,23 +132,23 @@ export default ({ bot, config, commands }: ModuleProps) => {
         `Scheduled <@${userIdToUnblock}> (id \`${userIdToUnblock}\`) to be unblocked in ${humanized}`,
       );
 
-      const timedUnblockMessage =
-        config.timedUnblockMessage || config.unblockMessage;
-      if (timedUnblockMessage) {
-        const formatted = timedUnblockMessage
-          .replace(/\{delay}/g, humanized)
-          .replace(/\{timestamp}/g, unblockAt.toString());
-        user.send(formatted).catch(noop);
-      }
+      // const timedUnblockMessage =
+      //   config.timedUnblockMessage || config.unblockMessage;
+      // if (timedUnblockMessage) {
+      //   const formatted = timedUnblockMessage
+      //     .replace(/\{delay}/g, humanized)
+      //     .replace(/\{timestamp}/g, unblockAt.toString());
+      //   user.send(formatted).catch(noop);
+      // }
     } else {
       await blocked.unblock(userIdToUnblock);
       msg.channel.send(
         `Unblocked <@${userIdToUnblock}> (id ${userIdToUnblock}) from modmail`,
       );
 
-      if (config.unblockMessage) {
-        user.send(config.unblockMessage).catch(noop);
-      }
+      // if (config.unblockMessage) {
+      //   user.send(config.unblockMessage).catch(noop);
+      // }
     }
   };
 

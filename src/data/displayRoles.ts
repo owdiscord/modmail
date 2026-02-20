@@ -87,9 +87,7 @@ export async function getModeratorDefaultDisplayRoleName(
   moderator: GuildMember,
 ) {
   const defaultDisplayRole = await getModeratorDefaultDisplayRole(moderator);
-  return defaultDisplayRole
-    ? defaultDisplayRole.name
-    : config.fallbackRoleName || null;
+  return defaultDisplayRole ? defaultDisplayRole.name : config.fallbackRoleName;
 }
 
 export async function getModeratorThreadDisplayRole(

@@ -133,10 +133,7 @@ export class ThreadMessage {
     if (this.attachments.length > 0)
       content += `\n\n${this.attachments.join("\n")}`;
 
-    const roleName =
-      config.overrideRoleNameDisplay ||
-      this.role_name ||
-      config.fallbackRoleName;
+    const roleName = this.role_name || config.fallbackRoleName;
     const modInfo = this.is_anonymous
       ? roleName
       : roleName
@@ -149,10 +146,7 @@ export class ThreadMessage {
   }
 
   public formatAsStaffReplyThreadMessage(): MessageCreateOptions {
-    const roleName =
-      config.overrideRoleNameDisplay ||
-      this.role_name ||
-      config.fallbackRoleName;
+    const roleName = this.role_name || config.fallbackRoleName;
     const modInfo = this.is_anonymous
       ? roleName
         ? `(Anonymous) (${this.user_name}) ${roleName}`

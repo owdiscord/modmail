@@ -150,9 +150,8 @@ export async function handleSnippet(
   thread: Thread,
   anon: boolean,
 ) {
-  anon = config.forceAnon ? config.forceAnon : anon;
   const snippetInvoke = msg.content.slice(
-    anon ? config.snippetPrefixAnon.length : config.snippetPrefix.length,
+    anon ? config.anonSnippetPrefix.length : config.snippetPrefix.length,
   );
   if (!snippetInvoke) return;
 

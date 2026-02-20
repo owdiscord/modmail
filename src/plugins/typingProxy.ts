@@ -4,12 +4,12 @@ import type { ModuleProps } from "../plugins";
 import { noop } from "../utils";
 
 export default ({ bot, db, config }: ModuleProps) => {
-  if (config.typingProxy || config.typingProxyReverse) {
+  if (config.typingProxyToInbox || config.typingProxyToUser) {
     bot.on(Events.TypingStart, async ({ channel, user }) => {
       if (!user) return;
 
       // config.typingProxy: forward user typing in a DM to the modmail thread
-      if (config.typingProxy && !(channel instanceof GuildChannel)) {
+      if (config.typingProxyToInbox && !(channel instanceof GuildChannel)) {
         const thread = await findOpenThreadByUserId(db, user.id);
         if (!thread) return;
 
@@ -22,7 +22,7 @@ export default ({ bot, db, config }: ModuleProps) => {
 
       // config.typingProxyReverse: forward moderator typing in a thread to the DM
       if (
-        config.typingProxyReverse &&
+        config.typingProxyToUser &&
         channel.type === ChannelType.GuildText &&
         !user.bot
       ) {

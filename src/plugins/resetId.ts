@@ -32,7 +32,7 @@ export default ({ db, commands, config }: ModuleProps) => {
         );
 
       channel.send(`✓ Thread \`${fromId}\` is now \`${newId}\``);
-      if (channel.id !== config.logChannelId)
+      if (channel.id !== config.logChannel)
         postLog(`Thread \`${fromId}\` is now \`${newId}\``);
     },
     {},

@@ -4,12 +4,7 @@ import type { Commands } from "./commands";
 import type { ModmailConfig } from "./config";
 import { downloadAttachment, saveAttachment } from "./data/attachments";
 import displayRoles from "./data/displayRoles";
-import {
-  getLogCustomResponse,
-  getLogFile,
-  getLogUrl,
-  saveLogToStorage,
-} from "./data/logs";
+import { getLogUrl } from "./data/logs";
 import { afterNewMessageReceived } from "./hooks/afterNewMessageReceived";
 import { afterThreadClose } from "./hooks/afterThreadClose";
 import { afterThreadCloseScheduleCanceled } from "./hooks/afterThreadCloseScheduleCanceled";
@@ -19,7 +14,6 @@ import { beforeNewThread } from "./hooks/beforeNewThread";
 import alert from "./plugins/alert";
 import block from "./plugins/block";
 import close from "./plugins/close";
-import greeting from "./plugins/greeting";
 import id from "./plugins/id";
 import info from "./plugins/info";
 import joinLeaveNotification from "./plugins/joinLeaveNotification";
@@ -45,10 +39,7 @@ export type ModuleProps = {
     saveAttachment: typeof saveAttachment;
   };
   logs: {
-    saveLogToStorage: typeof saveLogToStorage;
     getLogUrl: typeof getLogUrl;
-    getLogFile: typeof getLogFile;
-    getLogCustomResponse: typeof getLogCustomResponse;
   };
   hooks: {
     beforeNewThread: typeof beforeNewThread;
@@ -67,7 +58,6 @@ export function loadPlugins(props: ModuleProps) {
     alert,
     block,
     close,
-    greeting,
     info,
     joinLeaveNotification,
     logs,
@@ -111,10 +101,7 @@ export function createPluginProps({
       saveAttachment: saveAttachment,
     },
     logs: {
-      saveLogToStorage: saveLogToStorage,
       getLogUrl: getLogUrl,
-      getLogFile: getLogFile,
-      getLogCustomResponse: getLogCustomResponse,
     },
     hooks: {
       beforeNewThread,

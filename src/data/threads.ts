@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import type { SQL } from "bun";
 import {
   ChannelType,
@@ -104,16 +103,17 @@ export async function createNewThreadForUser(
 
     // If set in config, check that the user's account is old enough (time since they registered on Discord)
     // If the account is too new, don't start a new thread and optionally reply to them with a message
-    if (config.requiredAccountAge && !ignoreRequirements) {
+    if (config.requirements.accountAge && !ignoreRequirements) {
       const requiredAge = new Date();
       requiredAge.setTime(
-        requiredAge.getTime() - config.requiredAccountAge * (60 * 60 * 1000),
+        requiredAge.getTime() -
+          config.requirements.accountAge * (60 * 60 * 1000),
       );
 
       if (user.createdAt >= requiredAge) {
-        if (config.accountAgeDeniedMessage) {
+        if (config.requirements.accountAgeDeniedMessage) {
           const accountAgeDeniedMessage = readMultilineConfigValue(
-            config.accountAgeDeniedMessage,
+            config.requirements.accountAgeDeniedMessage,
           );
           const privateChannel = user.dmChannel;
           if (privateChannel) {
@@ -126,16 +126,14 @@ export async function createNewThreadForUser(
 
     // Use the user's name for the thread channel's name
     // Channel names are particularly picky about what characters they allow, so we gotta do some clean-up
-    // let cleanName = slugify(user.username);
-    //
     let channelName = formatUsername(user.username);
 
-    if (config.anonymizeChannelName) {
-      channelName = createHash("md5")
-        .update(channelName + Date.now())
-        .digest("hex")
-        .slice(0, 12);
-    }
+    // if (config.anonymizeChannelName) {
+    //   channelName = createHash("md5")
+    //     .update(channelName + Date.now())
+    //     .digest("hex")
+    //     .slice(0, 12);
+    // }
 
     opts.channelName = channelName;
 
@@ -177,11 +175,11 @@ export async function createNewThreadForUser(
 
     // If set in config, check that the user has been a member of one of the main guilds long enough
     // If they haven't, don't start a new thread and optionally reply to them with a message
-    if (config.requiredTimeOnServer && !ignoreRequirements) {
+    if (config.requirements.timeOnServer && !ignoreRequirements) {
       // The minimum required time required on the server
       const timeRequired = new Date();
       timeRequired.setTime(
-        timeRequired.getTime() - config.requiredTimeOnServer * (60 * 1000),
+        timeRequired.getTime() - config.requirements.timeOnServer * (60 * 1000),
       );
 
       // Check if the user joined any of the main servers a long enough time ago
@@ -193,9 +191,9 @@ export async function createNewThreadForUser(
         });
 
       if (!isAllowed) {
-        if (config.timeOnServerDeniedMessage) {
+        if (config.requirements.timeOnServerDeniedMessage) {
           const timeOnServerDeniedMessage = readMultilineConfigValue(
-            config.timeOnServerDeniedMessage,
+            config.requirements.timeOnServerDeniedMessage,
           );
 
           await user.send(timeOnServerDeniedMessage);
@@ -208,25 +206,18 @@ export async function createNewThreadForUser(
     // Figure out which category we should place the thread channel in
     let newThreadCategoryId = hookResult?.categoryId || opts.categoryId || null;
 
-    if (
-      !newThreadCategoryId &&
-      config.categoryAutomation?.newThreadFromServer
-    ) {
+    if (!newThreadCategoryId && config.automation.newThreadCategory) {
       // Categories for specific source guilds (in case of multiple main guilds)
-      for (const [guildId, categoryId] of Object.entries(
-        config.categoryAutomation.newThreadFromServer,
-      )) {
-        if (userGuildData.has(guildId)) {
-          newThreadCategoryId = categoryId;
+      for (const { guild, category } of config.automation.newThreadCategory) {
+        if (userGuildData.has(guild)) {
+          newThreadCategoryId = category;
           break;
         }
       }
     }
 
-    if (!newThreadCategoryId && config.categoryAutomation?.newThread) {
-      // Blanket category id for all new threads (also functions as a fallback for the above)
-      newThreadCategoryId = config.categoryAutomation?.newThread;
-    }
+    if (!newThreadCategoryId && config.automation.defaultCategory)
+      newThreadCategoryId = config.automation.defaultCategory;
 
     // Attempt to create the inbox channel for this thread
     let createdChannel: TextChannel | undefined;

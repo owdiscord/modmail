@@ -17,7 +17,7 @@ export default ({ config, commands }: ModuleProps) => {
         msg.member,
         (args.text as string) || "",
         msg.attachments,
-        config.forceAnon,
+        false,
         msg.reference,
       );
       if (replied) msg.delete();

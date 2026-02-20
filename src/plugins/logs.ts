@@ -9,7 +9,7 @@ import {
   TextDisplayBuilder,
 } from "discord.js";
 import { ThreadStatus } from "../data/constants";
-import { getLogFile, getLogUrl, saveLogToStorage } from "../data/logs";
+import { getLogUrl } from "../data/logs";
 import type Thread from "../data/Thread";
 import * as threads from "../data/threads";
 import type { ModuleProps } from "../plugins";
@@ -18,7 +18,7 @@ import { getSelfUrl } from "../utils";
 
 const LOG_LINES_PER_PAGE = 10;
 
-export default ({ db, commands, hooks }: ModuleProps) => {
+export default ({ db, commands }: ModuleProps) => {
   const addOptQueryStringToUrl = (
     url: string,
     args: { verbose: boolean; simple: boolean },
@@ -158,11 +158,6 @@ export default ({ db, commands, hooks }: ModuleProps) => {
 
     if (!channel || !channel.isSendable()) return;
 
-    // const customResponse = await getLogCustomResponse(thread);
-    // if (customResponse && (customResponse.content || customResponse.file)) {
-    //   channel.createMessage(customResponse.content, customResponse.file);
-    // }
-
     const logUrl = await getLogUrl(thread);
     if (logUrl) {
       const qs = { verbose: false, simple: false };
@@ -176,15 +171,6 @@ export default ({ db, commands, hooks }: ModuleProps) => {
       channel.send(
         `Open the following link to view the log for thread #${thread.thread_number}:\n<${addOptQueryStringToUrl(logUrl, qs)}>`,
       );
-      return;
-    }
-
-    const logFile = await getLogFile(thread);
-    if (logFile) {
-      channel.send({
-        content: `Download the following file to view the log for thread #${thread.thread_number}:`,
-        files: [logFile],
-      });
       return;
     }
 
@@ -272,11 +258,6 @@ export default ({ db, commands, hooks }: ModuleProps) => {
     },
     {},
   );
-
-  hooks.afterThreadClose(async ({ threadId }) => {
-    const thread = await threads.findById(db, threadId);
-    if (thread) await saveLogToStorage(thread);
-  });
 };
 
 async function threadInfoCmd(msg: Message, thread: Thread) {

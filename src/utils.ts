@@ -28,28 +28,22 @@ const userMentionRegex = /^<@!?([0-9]+?)>$/;
 let inboxGuild: Guild | undefined;
 let mainGuilds: Array<Guild> = [];
 
-/**
- * @returns {Guild}
- */
 export function getInboxGuild(): Guild {
   if (!inboxGuild)
-    inboxGuild = bot.guilds.cache.find((g) => g.id === config.inboxServerId);
+    inboxGuild = bot.guilds.cache.find((g) => g.id === config.inboxServer);
   if (!inboxGuild) throw new BotError("The bot is not on the inbox server!");
   return inboxGuild;
 }
 
-/**
- * @returns {Guild[]}
- */
 export function getMainGuilds(): Array<Guild> {
   if (mainGuilds.length === 0) {
     mainGuilds = Array.from(bot.guilds.cache.values()).filter((g) =>
-      (config.mainServerId || "").includes(g.id),
+      (config.mainServers || "").includes(g.id),
     );
   }
 
-  if (mainGuilds.length !== config.mainServerId?.length) {
-    if (config.mainServerId?.length === 1) {
+  if (mainGuilds.length !== config.mainServers.length) {
+    if (config.mainServers.length === 1) {
       console.warn("[WARN] The bot hasn't joined the main guild!");
     } else {
       console.warn("[WARN] The bot hasn't joined one or more main guilds!");
@@ -59,15 +53,9 @@ export function getMainGuilds(): Array<Guild> {
   return mainGuilds;
 }
 
-/**
- * Returns the designated log channel, or the default channel if none is set
- * @returns {TextChannel}
- */
 export async function getLogChannel(): Promise<TextChannel> {
   const _inboxGuild = getInboxGuild();
-  const _logChannel = await _inboxGuild.channels.fetch(
-    config.logChannelId || "",
-  );
+  const _logChannel = await _inboxGuild.channels.fetch(config.logChannel || "");
 
   if (!_logChannel) {
     throw new BotError("Log channel (logChannelId) not found!");
@@ -110,10 +98,10 @@ export function postError(channel: Channel, content: string, opts = {}) {
 
 export function isStaff(member: GuildMember | null): boolean {
   if (!member) return false;
-  if (config.inboxServerPermission?.length === 0) return true;
+  if (config.inboxPermissions.length === 0) return true;
   if (member.guild.ownerId === member.id) return true;
 
-  return (config.inboxServerPermission || []).some((perm) => {
+  return (config.inboxPermissions || []).some((perm) => {
     if (isSnowflake(perm as string)) {
       // If perm is a snowflake, check it against the member's user id and roles
       if (member.id === perm) return true;
@@ -198,10 +186,10 @@ export async function getSelfIp(): Promise<string> {
 }
 
 export async function getSelfUrl(path: string = ""): Promise<string> {
-  if (config.url) {
-    return `${config.url}/${path}`;
+  if (config.web.url) {
+    return `${config.web.url}/${path}`;
   } else {
-    const port = config.port || 8890;
+    const port = config.web.port || 8890;
     const ip = await getSelfIp();
     return `http://${ip}:${port}/${path}`;
   }
@@ -280,7 +268,7 @@ export function mentionRolesToMention(mentionRoles: string[]): string {
  * @returns {string}
  */
 export function getInboxMention(): string {
-  const mentionRoles = getValidMentionRoles(config.mentionRole || []);
+  const mentionRoles = getValidMentionRoles(config.mentionRoles || []);
   return mentionRolesToMention(mentionRoles);
 }
 
@@ -307,7 +295,7 @@ export function mentionRolesToAllowedMentions(
 }
 
 export function getInboxMentionAllowedMentions(): MessageMentionOptions {
-  const mentionRoles = getValidMentionRoles(config.mentionRole || []);
+  const mentionRoles = getValidMentionRoles(config.mentionRoles || []);
   return mentionRolesToAllowedMentions(mentionRoles);
 }
 

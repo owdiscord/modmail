@@ -119,6 +119,6 @@ modules.forEach((mod) => {
   // Run the webserver
   serve({
     fetch: web.fetch,
-    port: config.port,
+    port: config.web.port,
   });
 })();

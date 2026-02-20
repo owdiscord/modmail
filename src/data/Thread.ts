@@ -51,7 +51,7 @@ import { saveAttachment } from "./attachments";
 import { isBlocked } from "./blocked";
 import { ThreadMessageType, ThreadStatus } from "./constants";
 import { getModeratorThreadDisplayRoleName } from "./displayRoles";
-import { getLogUrl, type LogStorageTypes } from "./logs";
+import { getLogUrl } from "./logs";
 import { findNotesByUserId } from "./notes";
 import { getRegisteredUsername, getStaffUsername } from "./Registration";
 import type { Snippet } from "./Snippet";
@@ -85,7 +85,7 @@ export type ThreadProps = {
   scheduled_suspend_id?: string;
   scheduled_suspend_name?: string;
   alert_ids: string;
-  log_storage_type: LogStorageTypes;
+  log_storage_type: string;
   log_storage_data: object;
   created_at?: Date;
   metadata: string;
@@ -110,7 +110,7 @@ export class Thread {
   public scheduled_suspend_id: string | null;
   public scheduled_suspend_name: string | null;
   public alert_ids: string;
-  public log_storage_type: LogStorageTypes;
+  public log_storage_type: string;
   public log_storage_data:
     | {
         fullPath?: string;
@@ -140,7 +140,7 @@ export class Thread {
     this.scheduled_suspend_id = props.scheduled_suspend_id || null;
     this.scheduled_suspend_name = props.scheduled_suspend_name || null;
     this.alert_ids = props.alert_ids;
-    this.log_storage_type = props.log_storage_type;
+    this.log_storage_type = "local";
     this.log_storage_data =
       typeof props.log_storage_data === "string"
         ? JSON.parse(props.log_storage_data)
@@ -215,7 +215,7 @@ export class Thread {
     if (this._autoAlertTimeout) clearTimeout(this._autoAlertTimeout);
 
     const autoAlertDelay =
-      convertDelayStringToMS(config.autoAlertDelay || "1s") || 1000;
+      convertDelayStringToMS(config.autoAlertDelay) || 120 * 1000;
 
     this._autoAlertTimeout = setTimeout(() => {
       if (this.status !== ThreadStatus.Open) return;
@@ -232,10 +232,10 @@ export class Thread {
   ): Promise<boolean> {
     if (!moderator) return false;
 
-    let moderatorName = await getStaffUsername(moderator);
-    if (config.breakFormattingForNames) {
-      moderatorName = moderatorName.replace(escapeFormattingRegex, "\\$&");
-    }
+    let moderatorName = (await getStaffUsername(moderator)).replace(
+      escapeFormattingRegex,
+      "\\$&",
+    );
 
     const roleName = await getModeratorThreadDisplayRoleName(
       moderator,
@@ -366,11 +366,6 @@ export class Thread {
     if (!dmMessage) return false;
 
     threadMessage.dm_message_id = dmMessage.id;
-
-    // Special case: "original" attachments
-    if (config.attachmentStorage === "original") {
-      threadMessage.attachments = dmMessage.attachments.map((att) => att.url);
-    }
 
     // Show the reply in the inbox thread
     const inboxMessage = await this.postToThreadChannel({
@@ -1043,7 +1038,7 @@ export class Thread {
   }
 
   async updateLogStorageValues(
-    storageType: LogStorageTypes,
+    storageType: string,
     storageData:
       | {
           fullPath?: string;
@@ -1238,11 +1233,7 @@ export class Thread {
     }
 
     // User id (and mention, if enabled)
-    if (config.mentionUserInThreadHeader) {
-      infoHeaderItems.push(`ID **${user.id}** (<@!${user.id}>)`);
-    } else {
-      infoHeaderItems.push(`ID **${user.id}**`);
-    }
+    infoHeaderItems.push(`ID **${user.id}** (<@!${user.id}>)`);
 
     let infoHeader = infoHeaderItems.join(", ");
     const userBanned = guildStatus.ban !== null && guildStatus.main === null;
@@ -1272,7 +1263,7 @@ export class Thread {
       }
 
       const member = await guildData.member.fetch();
-      if (config.rolesInThreadHeader && member.roles.cache.size > 0) {
+      if (member.roles.cache.size > 0) {
         headerItems.push({
           name: "Roles",
           value: guildData.member.roles.cache

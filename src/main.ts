@@ -40,15 +40,14 @@ export async function start(bot: Client) {
         console.log("");
 
         const isSingleServer =
-          config.inboxServerId &&
-          config.mainServerId?.includes(config.inboxServerId);
+          config.inboxServer && config.mainServers.includes(config.inboxServer);
 
         if (isSingleServer) {
           console.log(
             "WARNING: The bot will not work before it's invited to the server.",
           );
         } else {
-          const hasMultipleMainServers = (config.mainServerId || []).length > 1;
+          const hasMultipleMainServers = (config.mainServers || []).length > 1;
           if (hasMultipleMainServers) {
             console.log(
               "WARNING: The bot will not function correctly until it's invited to *all* main servers and the inbox server.",
@@ -66,8 +65,8 @@ export async function start(bot: Client) {
       }, 15 * 1000);
 
       Promise.all([
-        ...(config.mainServerId || []).map((id) => waitForGuild(bot, id)),
-        waitForGuild(bot, config.inboxServerId || ""),
+        ...(config.mainServers || []).map((id) => waitForGuild(bot, id)),
+        waitForGuild(bot, config.inboxServer || ""),
       ]).then(() => {
         clearTimeout(waitNoteTimeout);
         resolve();
@@ -98,7 +97,7 @@ export async function start(bot: Client) {
     }
   });
 
-  bot.login(config.token);
+  bot.login(config.secrets.token);
 }
 
 function waitForGuild(bot: Client, guildId: string) {
@@ -228,48 +227,6 @@ async function handleMainServerMention(bot: Client, msg: Message) {
     const logChannel = await utils.getLogChannel();
     logChannel.send({ content: block, allowedMentions });
   }
-
-  // Send an auto-response to the mention, if enabled
-  if (config.botMentionResponse) {
-    const botMentionResponse = utils.readMultilineConfigValue(
-      config.botMentionResponse,
-    );
-    if (channel?.isSendable())
-      channel.send({
-        content: botMentionResponse.replace(
-          /{userMention}/g,
-          `<@${msg.author.id}>`,
-        ),
-        allowedMentions: {
-          users: [msg.author.id],
-        },
-      });
-  }
-
-  // If configured, automatically open a new thread with a user who has pinged it
-  if (config.createThreadOnMention) {
-    const existingThread = await threads.findOpenThreadByUserId(
-      db,
-      msg.author.id,
-    );
-    if (!existingThread) {
-      // Only open a thread if we don't already have one
-      const createdThread = await threads.createNewThreadForUser(
-        db,
-        msg.author,
-        {
-          quiet: true,
-        },
-      );
-
-      if (!createdThread) return;
-
-      await createdThread.postSystemMessage(
-        `This thread was opened from a bot mention in <#${channel?.id}>`,
-      );
-      await createdThread.receiveUserReply(msg);
-    }
-  }
 }
 
 /**
@@ -290,7 +247,7 @@ async function handleInboxServerMessage(
   const isSnippet =
     !msg.author.bot &&
     (msg.content.startsWith(config.snippetPrefix) ||
-      msg.content.startsWith(config.snippetPrefixAnon));
+      msg.content.startsWith(config.anonSnippetPrefix));
 
   const thread = await threads.findByChannelId(db, msg.channel.id);
 
@@ -299,7 +256,7 @@ async function handleInboxServerMessage(
       msg,
       config,
       thread,
-      msg.content.startsWith(config.snippetPrefixAnon),
+      msg.content.startsWith(config.anonSnippetPrefix),
     );
 
     return;
@@ -362,10 +319,11 @@ async function handleUserDM(_bot: Client, msg: Message) {
   if (!channel || !channel.isSendable()) return;
 
   if (await blocked.isBlocked(msg.author.id)) {
-    if (config.blockedReply != null) {
-      // Ignore silently if this fails
-      channel.send(config.blockedReply || "").catch(utils.noop);
-    }
+    // FIXME: Confirm we can kill this.
+    // if (config.blockedReply != null) {
+    //   // Ignore silently if this fails
+    //   channel.send(config.blockedReply || "").catch(utils.noop);
+    // }
     return;
   }
 
@@ -406,8 +364,7 @@ async function handleUserDM(_bot: Client, msg: Message) {
           );
 
           try {
-            const postToThreadChannel =
-              config.showResponseMessageInThreadChannel;
+            const postToThreadChannel = config.showResponseMessageInInbox;
 
             await thread.sendSystemMessageToUser(responseMessage, {
               postToThreadChannel,
@@ -429,7 +386,7 @@ async function handleUserDM(_bot: Client, msg: Message) {
  * Handle message edits
  */
 async function handleMessageEdit(
-  bot: Client,
+  _: Client,
   msg: OmitPartialGroupDMChannel<Message<boolean> | PartialMessage<boolean>>,
   oldMessage: OmitPartialGroupDMChannel<
     Message<boolean> | PartialMessage<boolean>
@@ -460,34 +417,36 @@ async function handleMessageEdit(
       `**The user edited their message:**\n\`B:\` ${oldContent}\n\`A:\` ${newContent}`,
     );
 
-    if (config.updateMessagesLive) {
-      // When directly updating the message in the staff view, we still want to keep the original content in the logs.
-      // To do this, we don't edit the log message at all and instead add a fake system message that includes the edit.
-      // This mirrors how the logs would look when we're not directly updating the message.
-      await thread.addSystemMessageToLogs(editMessage);
-
-      const threadMessageWithEdit = threadMessage.clone();
-      threadMessageWithEdit.body = newContent;
-      const formatted = threadMessageWithEdit.formatAsUserReply();
-
-      try {
-        const channel = await bot.channels.fetch(thread.channel_id);
-
-        if (channel?.isTextBased()) {
-          const message = await channel.messages.fetch(
-            threadMessage.inbox_message_id,
-          );
-
-          await message.edit({
-            content: formatted.content,
-          });
-        }
-      } catch (e) {
-        console.warn(e);
-      }
-    } else {
-      await thread.postSystemMessage(editMessage);
-    }
+    // FIXME: Work out a new and better way to implement this behaviour
+    //
+    // if (config.updateMessagesLive) {
+    //   // When directly updating the message in the staff view, we still want to keep the original content in the logs.
+    //   // To do this, we don't edit the log message at all and instead add a fake system message that includes the edit.
+    //   // This mirrors how the logs would look when we're not directly updating the message.
+    //   await thread.addSystemMessageToLogs(editMessage);
+    //
+    //   const threadMessageWithEdit = threadMessage.clone();
+    //   threadMessageWithEdit.body = newContent;
+    //   const formatted = threadMessageWithEdit.formatAsUserReply();
+    //
+    //   try {
+    //     const channel = await bot.channels.fetch(thread.channel_id);
+    //
+    //     if (channel?.isTextBased()) {
+    //       const message = await channel.messages.fetch(
+    //         threadMessage.inbox_message_id,
+    //       );
+    //
+    //       await message.edit({
+    //         content: formatted.content,
+    //       });
+    //     }
+    //   } catch (e) {
+    //     console.warn(e);
+    //   }
+    // } else {
+    await thread.postSystemMessage(editMessage);
+    // }
   }
 
   if (threadMessage.isChat()) {
@@ -500,7 +459,7 @@ async function handleMessageEdit(
  * Handle message deletions
  */
 async function handleMessageDelete(
-  bot: Client,
+  _: Client,
   msg: OmitPartialGroupDMChannel<Message<boolean> | PartialMessage<boolean>>,
 ) {
   const msgThread = await threads.findByChannelId(db, msg.channelId);
@@ -519,21 +478,22 @@ async function handleMessageDelete(
     return;
   }
 
-  if (threadMessage.isFromUser() && config.updateMessagesLive) {
-    // If the deleted message was in DMs and updateMessagesLive is enabled, reflect the deletion in staff view
-    try {
-      const channel = await bot.channels.fetch(thread.channel_id);
-
-      if (channel?.isTextBased()) {
-        const message = await channel.messages.fetch(
-          threadMessage.inbox_message_id,
-        );
-        await message.delete();
-      }
-    } catch (e) {
-      console.warn(e);
-    }
-  }
+  // FIXME: Same as last FIXME
+  // if (threadMessage.isFromUser() && config.updateMessagesLive) {
+  //   // If the deleted message was in DMs and updateMessagesLive is enabled, reflect the deletion in staff view
+  //   try {
+  //     const channel = await bot.channels.fetch(thread.channel_id);
+  //
+  //     if (channel?.isTextBased()) {
+  //       const message = await channel.messages.fetch(
+  //         threadMessage.inbox_message_id,
+  //       );
+  //       await message.delete();
+  //     }
+  //   } catch (e) {
+  //     console.warn(e);
+  //   }
+  // }
 
   // If the deleted message was staff chatter in the thread channel, also delete it from the logs
   if (threadMessage.isChat()) thread.deleteChatMessageFromLogs(msg.id);
@@ -543,12 +503,6 @@ async function loadAllPlugins(
   bot: Client,
   commands: Commands,
 ): Promise<number> {
-  for (const alias in config.commandAliases) {
-    if (config.commandAliases[alias]) {
-      commands.addAlias(config.commandAliases[alias], alias);
-    }
-  }
-
   const props = createPluginProps({ bot, db, config, commands });
   return loadPlugins(props);
 }
