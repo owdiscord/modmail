@@ -8,11 +8,11 @@ export function useDb(): SQL {
 
   db = new SQL({
     adapter: "mysql",
-    hostname: config.mysqlOptions.host,
-    port: config.mysqlOptions.port,
-    database: config.mysqlOptions.database,
-    username: config.mysqlOptions.user,
-    password: config.mysqlOptions.password,
+    hostname: config.secrets.database.host,
+    port: config.secrets.database.port,
+    database: config.secrets.database.database,
+    username: config.secrets.database.user,
+    password: config.secrets.database.password,
   });
 
   db`SET time_zone = '+00:00';`.catch((e) =>
