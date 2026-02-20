@@ -33,6 +33,7 @@
 		"marked": "^17.0.1",
 		"mysql2": "^3.11.3",
 		"public-ip": "^6.0.2",
+		"smol-toml": "^1.6.0",
 		"uuid": "13.0.0",
 		"yargs-parser": "^21.1.1"
 	},

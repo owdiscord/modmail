@@ -17,6 +17,7 @@
         "marked": "^17.0.1",
         "mysql2": "^3.11.3",
         "public-ip": "^6.0.2",
+        "smol-toml": "^1.6.0",
         "uuid": "13.0.0",
         "yargs-parser": "^21.1.1",
       },
@@ -333,6 +334,8 @@
     "safer-buffer": ["safer-buffer@2.1.2", "", {}, "sha512-YZo3K82SD7Riyi0E1EQPojLz7kpepnSQI9IyPbHHg1XXXevb5dJI7tpyN2ADxGcQbHG7vcyRHk0cbwqcQriUtg=="],
 
     "seq-queue": ["seq-queue@0.0.5", "", {}, "sha1-1WgS4cAXpuTnw+Ojeh2m143TyT4="],
+
+    "smol-toml": ["smol-toml@1.6.0", "", {}, "sha512-4zemZi0HvTnYwLfrpk/CF9LOd9Lt87kAt50GnqhMpyF9U3poDAP2+iukq2bZsO/ufegbYehBkqINbsWxj4l4cw=="],
 
     "sort-array": ["sort-array@5.0.0", "", { "dependencies": { "array-back": "^6.2.2", "typical": "^7.1.1" }, "peerDependencies": { "@75lb/nature": "^0.1.1" }, "optionalPeers": ["@75lb/nature"] }, "sha512-Sg9MzajSGprcSrMIxsXyNT0e0JB47RJRfJspC+7co4Z5BdNsNl8FmWI+lXEpyKq+vkMG6pHgAhqyCO+bkDTfFQ=="],
 

@@ -8,3 +8,5 @@
 /config.*
 *.config.ini
 !/config.example.ini
+config.toml
+secrets.toml
