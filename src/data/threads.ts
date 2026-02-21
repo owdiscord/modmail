@@ -204,20 +204,18 @@ export async function createNewThreadForUser(
     }
 
     // Figure out which category we should place the thread channel in
-    let newThreadCategoryId = hookResult?.categoryId || opts.categoryId || null;
+    const parentCategory = (() => {
+      if (hookResult?.categoryId) return hookResult.categoryId;
 
-    if (!newThreadCategoryId && config.automation.newThreadCategory) {
-      // Categories for specific source guilds (in case of multiple main guilds)
-      for (const { guild, category } of config.automation.newThreadCategory) {
-        if (userGuildData.has(guild)) {
-          newThreadCategoryId = category;
-          break;
-        }
-      }
-    }
+      if (opts.categoryId) return opts.categoryId;
 
-    if (!newThreadCategoryId && config.automation.defaultCategory)
-      newThreadCategoryId = config.automation.defaultCategory;
+      const guildDefault = config.automation.newThreadCategory.find((c) =>
+        userGuildData.has(c.guild),
+      );
+      if (guildDefault) return guildDefault.category;
+
+      return config.automation.defaultCategory;
+    })();
 
     // Attempt to create the inbox channel for this thread
     let createdChannel: TextChannel | undefined;
@@ -225,7 +223,7 @@ export async function createNewThreadForUser(
       createdChannel = await getInboxGuild().channels.create({
         name: opts.channelName,
         type: ChannelType.GuildText,
-        parent: newThreadCategoryId,
+        parent: parentCategory,
         reason: "New modmail thread",
       });
     } catch (err: unknown) {
@@ -241,7 +239,7 @@ export async function createNewThreadForUser(
           name: replacedChannelName,
           type: ChannelType.GuildText,
           reason: "New Modmail thread",
-          parent: newThreadCategoryId,
+          parent: parentCategory,
         });
       }
 
