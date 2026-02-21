@@ -121,12 +121,12 @@ export default ({ db, commands }: ModuleProps) => {
               .setLabel("Prev")
               .setStyle(ButtonStyle.Secondary)
               .setDisabled(true)
-              .setCustomId("t"),
+              .setCustomId("logsBefore"),
             new ButtonBuilder()
               .setLabel("Next")
               .setDisabled(false)
               .setStyle(ButtonStyle.Secondary)
-              .setCustomId("nextUp"),
+              .setCustomId("logsAfter"),
           ),
         ),
     ];

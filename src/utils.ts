@@ -187,6 +187,7 @@ export async function getSelfIp(): Promise<string> {
 
 export async function getSelfUrl(path: string = ""): Promise<string> {
   if (config.web.url) {
+    if (path.charAt(0) === "/") path = path.substring(1);
     return `${config.web.url}/${path}`;
   } else {
     const port = config.web.port || 8890;
