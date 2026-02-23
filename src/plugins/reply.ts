@@ -24,7 +24,7 @@ export default ({ config, commands }: ModuleProps) => {
           `${Emoji.Banned} Could not send reply: Thread is less than 6 hours old.`,
         );
 
-        setTimeout(() => {
+        setTimeout(async () => {
           // @ts-ignore
           await msg.channel.send(`🥃 Swish... just kidding :)`);
         }, 3000);
