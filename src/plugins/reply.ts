@@ -1,4 +1,5 @@
 import type { ModuleProps } from "../plugins";
+import { Emoji } from "../style";
 import * as utils from "../utils";
 
 export default ({ config, commands }: ModuleProps) => {
@@ -7,6 +8,27 @@ export default ({ config, commands }: ModuleProps) => {
     "[text$]",
     async (msg, args, thread) => {
       if (!thread) return;
+
+      // Temporary joke referencing Annie's dream.
+      function isLessThanSixHoursAgo(date: Date): boolean {
+        const sixHoursInMs = 6 * 60 * 60 * 1000;
+        return Date.now() - date.getTime() < sixHoursInMs;
+      }
+
+      if (
+        msg.author.id === "756447259159166978" &&
+        isLessThanSixHoursAgo(thread.created_at)
+      ) {
+        // @ts-ignore
+        await msg.channel.send(
+          `${Emoji.Banned} Could not send reply: Thread is less than 6 hours old.`,
+        );
+
+        setTimeout(() => {
+          // @ts-ignore
+          await msg.channel.send(`🥃 Swish... just kidding :)`);
+        }, 3000);
+      }
 
       if (!args.text && msg.attachments.size === 0) {
         utils.postError(msg.channel, "Text or attachment required");
