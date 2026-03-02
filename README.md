@@ -1,4 +1,4 @@
-![ModMail SVG Icon][/static/modmail.svg]
+![ModMail SVG Icon](/static/modmail.svg)
 
 # ModMail for Overwatch
 
