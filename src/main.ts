@@ -386,7 +386,7 @@ async function handleUserDM(_bot: Client, msg: Message) {
  * Handle message edits
  */
 async function handleMessageEdit(
-  _: Client,
+  bot: Client,
   msg: OmitPartialGroupDMChannel<Message<boolean> | PartialMessage<boolean>>,
   oldMessage: OmitPartialGroupDMChannel<
     Message<boolean> | PartialMessage<boolean>
@@ -418,35 +418,35 @@ async function handleMessageEdit(
     );
 
     // FIXME: Work out a new and better way to implement this behaviour
-    //
-    // if (config.updateMessagesLive) {
-    //   // When directly updating the message in the staff view, we still want to keep the original content in the logs.
-    //   // To do this, we don't edit the log message at all and instead add a fake system message that includes the edit.
-    //   // This mirrors how the logs would look when we're not directly updating the message.
-    //   await thread.addSystemMessageToLogs(editMessage);
-    //
-    //   const threadMessageWithEdit = threadMessage.clone();
-    //   threadMessageWithEdit.body = newContent;
-    //   const formatted = threadMessageWithEdit.formatAsUserReply();
-    //
-    //   try {
-    //     const channel = await bot.channels.fetch(thread.channel_id);
-    //
-    //     if (channel?.isTextBased()) {
-    //       const message = await channel.messages.fetch(
-    //         threadMessage.inbox_message_id,
-    //       );
-    //
-    //       await message.edit({
-    //         content: formatted.content,
-    //       });
-    //     }
-    //   } catch (e) {
-    //     console.warn(e);
-    //   }
-    // } else {
-    await thread.postSystemMessage(editMessage);
-    // }
+    // When directly updating the message in the staff view, we still want to keep the original content in the logs.
+    // To do this, we don't edit the log message at all and instead add a fake system message that includes the edit.
+    // This mirrors how the logs would look when we're not directly updating the message.
+    await thread.addSystemMessageToLogs(editMessage);
+
+    const threadMessageWithEdit = threadMessage.clone();
+    threadMessageWithEdit.body = newContent;
+    const formatted = threadMessageWithEdit.formatAsUserReply();
+
+    try {
+      const channel = await bot.channels.fetch(thread.channel_id);
+
+      if (channel?.isTextBased()) {
+        const message = await channel.messages.fetch(
+          threadMessage.inbox_message_id,
+        );
+
+        await message.edit({
+          content: formatted.content,
+        });
+      }
+    } catch (e) {
+      console.warn(e);
+    }
+
+    // Only post a system log if the messages are significantly
+    // different (Levenshtein distance of more than 2)
+    if (threads.levenshteinDistance(oldContent, newContent) > 2)
+      await thread.postSystemMessage(editMessage);
   }
 
   if (threadMessage.isChat()) {
