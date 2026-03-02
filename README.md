@@ -1,27 +1,27 @@
-# Modmail for Discord
-Modmail Bot is a bot for [Discord](https://discord.com/) that allows users to DM the bot to contact the server's moderators/staff
-without messaging them individually or pinging them publically on the server.
-These DMs get relayed to modmail *threads*, channels where staff members can reply to and talk with the user.
-To the user, the entire process happens in DMs with the bot.
+![ModMail SVG Icon][/static/modmail.svg]
 
-Inspired by Reddit's modmail system.
+# ModMail for Overwatch
 
-**⚠ Note on updating to v3.0.0:** If you're currently using a *very* old version of the bot, from before February 2018, you'll first need to update to v2.30.1 and run the bot once before updating to v3.0.0.
+*Forked from Dragory/modmailbot to whom we am eternally grateful!*
 
-Always take a backup of your `db/data.sqlite` file before updating the bot.
+## Running
 
-## Getting started
-* **[🛠️ Setting up the bot](docs/setup.md)**
-* **[✨ Updating the bot](docs/updating.md)**
-* **[🙋 Frequently Asked Questions](docs/faq.md)**
-* [📝 Configuration](docs/configuration.md)
-* [🤖 Commands](docs/commands.md)
-* [📋 Snippets](docs/snippets.md)
-* [🧩 Plugins](docs/plugins.md)
-* [📌 Release notes](CHANGELOG.md)
-* [📚 **Community Guides & Resources**](https://github.com/Dragory/modmailbot-community-resources)
+You will need a MySQL 8 database running for the bot to connect to. This is
+most easily done with Docker Compose and the compose.dev.yml file. After that,
+it's a simple `bun run dev` to get the bot (including the logs webserver) going.
 
-## Support server
-If you need help with setting up the bot or would like to discuss other things related to it, join the support server on Discord here:
+There are **two** files you need to be aware of - config.toml and secrets.toml - 
+the secrets file is explicitly *not* to be committed into the repository as it 
+contains discord credentials. The rest of the config is fine enough to share.
 
-👉 **[Join support server](https://discord.gg/vRuhG9R)**
+## Contributing
+
+Although this is a pretty closed project, if there's something you want to add, 
+either from a user point of view or a moderator point of view, there's no harm
+in starting a pull request. much appreciation and love
+
+## Forking, or using elsewhere
+
+All yours. Do whatever you'd like to with it. Keep in mind we cannot provide 
+support, and neither can Dragory, as this is *heavily* modified. Please do not
+go spamming anyone, *especially not Dragory*, for help.
