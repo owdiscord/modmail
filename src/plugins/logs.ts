@@ -16,8 +16,10 @@ import type { ModuleProps } from "../plugins";
 import { Emoji } from "../style";
 import { getSelfUrl } from "../utils";
 import { getUserThreadsClosedCount } from "../data/threads";
+import type { SQL } from "bun";
+import bot from "../bot";
 
-const LOG_LINES_PER_PAGE = 10;
+const LOG_LINES_PER_PAGE = 12;
 
 export default ({ db, commands }: ModuleProps) => {
   const addOptQueryStringToUrl = (
@@ -50,96 +52,36 @@ export default ({ db, commands }: ModuleProps) => {
     const channel = await msg.channel.fetch();
     if (!channel || !channel.isSendable()) return;
 
-    let userThreads = await threads.getClosedThreadsByUserId(
+    const totalUserThreads = await threads.getClosedThreadCountByUserId(
+      db,
+      userId,
+      new Date(),
+    );
+
+    if (totalUserThreads === 0) {
+      channel.send({ content: `**There are no log files for <@${userId}>**` });
+      return;
+    }
+
+    const userThreads = await threads.getClosedThreadsByUserId(
       db,
       userId,
       args.page as number,
       LOG_LINES_PER_PAGE,
     );
 
-    if (userThreads.length === 0) {
-      channel.send({ content: `**There are no log files for <@${userId}>**` });
-      return;
-    }
-
-    // Pagination
-    const totalUserThreads = userThreads.length;
-    const maxPage = Math.ceil(totalUserThreads / LOG_LINES_PER_PAGE);
-    const inputPage = args.page as string;
-    const page = Math.max(
-      Math.min(inputPage ? parseInt(inputPage, 10) : 1, maxPage),
-      1,
+    const container = await logsComponent(
+      totalUserThreads,
+      userThreads,
+      parseInt(args.page as string, 10) || 1,
+      user.displayName,
+      user.id,
     );
-    const isPaginated = totalUserThreads > LOG_LINES_PER_PAGE;
-    // const start = (page - 1) * LOG_LINES_PER_PAGE;
-    // const end = page * LOG_LINES_PER_PAGE;
-    userThreads = userThreads.slice(
-      (page - 1) * LOG_LINES_PER_PAGE,
-      page * LOG_LINES_PER_PAGE,
-    );
-
-    const threadLines = (
-      await Promise.all(
-        userThreads.map(async (userThread) => {
-          const logUrl = await getSelfUrl(`logs/${userThread.id}`);
-          const startOfId = userThread.id.split("-")[0];
-
-          return `${Emoji.Thread} [\`#${startOfId}\`](${logUrl}) <t:${Math.round(userThread.created_at.getTime() / 1000)}:R>`;
-        }),
-      )
-    ).join("\n");
-
-    const embed = new EmbedBuilder();
-    embed.setAuthor({
-      name: user.displayName,
-      iconURL: user.avatarURL() || user.defaultAvatarURL,
-      url: `https://discord.com/users/${user.id}`,
-    });
-    embed.setDescription(
-      `${threadLines}${isPaginated ? "\n\nUse `!logs <num>` to see next page" : ""}`,
-    );
-    embed.setFooter({
-      text: `Page ${page} / ${maxPage}`,
-    });
-
-    const components = [
-      new ContainerBuilder()
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            `**Most recent threads with ${user.displayName}**`,
-          ),
-        )
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(threadLines),
-        )
-        .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent("Page 1 / 3"),
-        )
-        .addActionRowComponents((actionRow) =>
-          actionRow.setComponents(
-            new ButtonBuilder()
-              .setLabel("Prev")
-              .setStyle(ButtonStyle.Secondary)
-              .setDisabled(true)
-              .setCustomId("logsBefore"),
-            new ButtonBuilder()
-              .setLabel("Next")
-              .setDisabled(false)
-              .setStyle(ButtonStyle.Secondary)
-              .setCustomId("logsAfter"),
-          ),
-        ),
-    ];
 
     channel.send({
-      components,
+      components: [container],
       flags: MessageFlags.IsComponentsV2,
     });
-
-    // const sent = await channel.send({ embeds: [embed] });
-    // sent.react("⬅️");
-    // sent.react("➡️");
   };
 
   const logCmd = async (
@@ -288,14 +230,92 @@ async function threadInfoCmd(msg: Message, thread: Thread) {
       value: `\`${thread.user_id}\``,
       inline: true,
     },
-    // {
-    // name: "Thread number",
-    // value: `${thread.thread_number.toString()} (deprecated)`,
-    // inline: true,
-    // },
   ]);
 
   channel.send({
     embeds: [embed],
   });
+}
+
+export async function logsComponent(
+  totalUserThreads: number,
+  threads: Array<Thread>,
+  page: number,
+  username: string,
+  userId: string,
+): Promise<ContainerBuilder> {
+  const pages = Math.ceil(totalUserThreads / LOG_LINES_PER_PAGE);
+
+  const threadLines = (
+    await Promise.all(
+      threads.map(async (userThread) => {
+        const logUrl = await getSelfUrl(`logs/${userThread.id}`);
+        const startOfId = userThread.id.split("-")[0];
+
+        return `- [\`#${startOfId}\`](${logUrl}) <t:${Math.round(userThread.created_at.getTime() / 1000)}:R>`;
+      }),
+    )
+  ).join("\n");
+
+  const container = new ContainerBuilder()
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**Threads with ${username}**\n-# \`${userId}\``,
+      ),
+    )
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(threadLines));
+
+  if (pages > 1) {
+    container
+      .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`Page ${page || 1} / ${pages}`),
+      )
+      .addActionRowComponents((actionRow) =>
+        actionRow.setComponents(
+          new ButtonBuilder()
+            .setLabel("Newer")
+            .setDisabled(page === 1)
+            .setStyle(ButtonStyle.Secondary)
+            .setCustomId(`logs/${userId}/${page - 1}`),
+          new ButtonBuilder()
+            .setLabel("Older")
+            .setDisabled(page === pages)
+            .setStyle(ButtonStyle.Secondary)
+            .setCustomId(`logs/${userId}/${page + 1}`),
+        ),
+      );
+  }
+
+  return container;
+}
+
+export async function handleLogPageChange(
+  db: SQL,
+  userId: string,
+  displayName: string,
+  page: number,
+) {
+  const totalUserThreads = await threads.getClosedThreadCountByUserId(
+    db,
+    userId,
+    new Date(),
+  );
+
+  const userThreads = await threads.getClosedThreadsByUserId(
+    db,
+    userId,
+    page,
+    LOG_LINES_PER_PAGE,
+  );
+
+  const container = await logsComponent(
+    totalUserThreads,
+    userThreads,
+    page,
+    displayName,
+    userId,
+  );
+
+  return container;
 }

@@ -8,6 +8,9 @@ import {
   MessageType,
   type OmitPartialGroupDMChannel,
   type PartialMessage,
+  type Interaction,
+  ContainerComponent,
+  MessageFlags,
 } from "discord.js";
 import { type Commands, createCommandManager } from "./commands";
 import config from "./config";
@@ -21,6 +24,7 @@ import { handleSnippet } from "./plugins/snippets";
 import { messageQueue } from "./queue";
 import * as utils from "./utils";
 import { postError } from "./utils";
+import { handleLogPageChange } from "./plugins/logs";
 
 const db = useDb();
 
@@ -185,6 +189,11 @@ function initialiseListeners(bot: Client, commands: Commands) {
       `Modmail thread #${thread.thread_number} with ${thread.user_name} (${thread.user_id}) was closed automatically because the channel was deleted`,
     );
   });
+
+  bot.on(
+    Events.InteractionCreate,
+    async (interaction) => await handleInteractionCreate(bot, interaction),
+  );
 }
 
 /**
@@ -497,6 +506,30 @@ async function handleMessageDelete(
 
   // If the deleted message was staff chatter in the thread channel, also delete it from the logs
   if (threadMessage.isChat()) thread.deleteChatMessageFromLogs(msg.id);
+}
+
+async function handleInteractionCreate(bot: Client, interaction: Interaction) {
+  if (interaction.isButton() && interaction.customId.startsWith("logs")) {
+    const [_, userId, page] = interaction.customId.split("/", 3);
+    if (!userId || !page) return;
+
+    const displayName =
+      (await bot.users.fetch(userId)).displayName || "Unknown";
+
+    const container = await handleLogPageChange(
+      db,
+      userId as string,
+      displayName,
+      parseInt(page, 10),
+    );
+
+    return interaction.update({
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+
+  console.log(`Interaction ${interaction.id} wasn't matched with a handler.`);
 }
 
 async function loadAllPlugins(

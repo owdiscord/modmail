@@ -379,7 +379,7 @@ export async function getClosedThreadsByUserId(
   db: SQL,
   userId: string,
   page = 1,
-  limit = 10,
+  limit = 12,
 ): Promise<Thread[]> {
   const threads =
     await db`SELECT * FROM threads WHERE user_id = ${userId} AND status = ${ThreadStatus.Closed} ORDER BY created_at DESC LIMIT ${limit} OFFSET ${(page - 1) * limit}`;
@@ -387,7 +387,7 @@ export async function getClosedThreadsByUserId(
   if (threads)
     return threads.map((thread: ThreadProps) => new Thread(db, thread));
 
-  throw "[getClosedThreadsByUserId] could not retrieve thread";
+  throw "[getClosedThreadsByUserId] could not retrieve threads";
 }
 
 export async function getClosedThreadCountByUserId(
