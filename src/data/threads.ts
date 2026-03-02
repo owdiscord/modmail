@@ -474,7 +474,7 @@ export async function getNextThreadMessageNumber(
   thread_id: string,
 ): Promise<number> {
   const rows =
-    await db`SELECT COUNT(*) + 1 as count FROM thread_messages WHERE thread_id = ${thread_id} AND message_type = ${ThreadMessageType.ToUser}`;
+    await db`SELECT MAX(message_number) + 1 as count FROM thread_messages WHERE thread_id = ${thread_id} AND message_type = ${ThreadMessageType.ToUser}`;
   if (rows && rows.length === 1) return rows[0].count;
 
   return 1;
