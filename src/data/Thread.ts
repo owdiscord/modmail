@@ -58,12 +58,11 @@ import type { Snippet } from "./Snippet";
 import { all } from "./snippets";
 import ThreadMessage, { type ThreadMessageProps } from "./ThreadMessage";
 import {
-  getClosedThreadCountByUserId,
   getLastClosedThreadByUser,
   getNextThreadMessageNumber,
   getThreadMessageStats,
   getThreadStaffReplyCounts,
-  getUserThreadNumber,
+  getUserThreadsClosedCount,
 } from "./threads";
 import { userGuildStatus } from "./users";
 
@@ -1115,7 +1114,6 @@ export class Thread {
     const embed = new EmbedBuilder();
     if (user.avatarURL !== null) embed.setThumbnail(user.avatarURL());
 
-    const userLogCount = await getClosedThreadCountByUserId(this.db, user.id);
     const infoHeaderItems = [];
 
     // Account age
@@ -1280,6 +1278,12 @@ export class Thread {
       infoHeader += `\n**[${escapeMarkdown(guildData.guild.name)}]** ${headerStr}`;
     }
 
+    const userLogCount = await getUserThreadsClosedCount(
+      this.db,
+      this.user_id,
+      this.created_at,
+    );
+
     embed.setTitle(`Thread #${userLogCount + 1} with ${user.username}`);
 
     if (userLogCount > 0) {
@@ -1397,7 +1401,7 @@ export class Thread {
       );
 
     const embed = new EmbedBuilder();
-    const threadNumber = await getUserThreadNumber(
+    const threadNumber = await getUserThreadsClosedCount(
       this.db,
       user.id,
       this.created_at,

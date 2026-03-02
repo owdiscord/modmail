@@ -217,6 +217,8 @@ export async function createNewThreadForUser(
       return config.automation.defaultCategory;
     })();
 
+    console.log(parentCategory);
+
     // Attempt to create the inbox channel for this thread
     let createdChannel: TextChannel | undefined;
     try {
@@ -390,10 +392,11 @@ export async function getClosedThreadsByUserId(
 
 export async function getClosedThreadCountByUserId(
   db: SQL,
-  userId: string,
+  user_id: string,
+  created_time: Date,
 ): Promise<number> {
   const [{ thread_count }] =
-    await db`SELECT COUNT(id) AS thread_count FROM threads WHERE status = ${ThreadStatus.Closed} AND user_id = ${userId}`;
+    await db`SELECT COUNT(id) AS thread_count FROM threads WHERE status = ${ThreadStatus.Closed} AND user_id = ${user_id} AND created_at <= ${created_time}`;
 
   return thread_count;
 }
@@ -474,7 +477,7 @@ export async function getNextThreadMessageNumber(
   thread_id: string,
 ): Promise<number> {
   const rows =
-    await db`SELECT MAX(message_number) + 1 as count FROM thread_messages WHERE thread_id = ${thread_id} AND message_type = ${ThreadMessageType.ToUser}`;
+    await db`SELECT coalesce(MAX(message_number) + 1, 1) as count FROM thread_messages WHERE thread_id = ${thread_id} AND message_type = ${ThreadMessageType.ToUser}`;
   if (rows && rows.length === 1) return rows[0].count;
 
   return 1;
@@ -564,14 +567,14 @@ export async function getThreadStaffReplyCounts(
   return null;
 }
 
-export async function getUserThreadNumber(
+export async function getUserThreadsClosedCount(
   db: SQL,
   user_id: string,
   created_time: Date,
 ): Promise<number> {
   const result = await db<
     Array<{ count: number }>
-  >`SELECT COUNT(*) count FROM threads WHERE user_id = ${user_id} AND created_at <= ${created_time}`;
+  >`SELECT coalesce(COUNT(id), 0) count FROM threads WHERE user_id = ${user_id} AND created_at <= ${created_time} AND status = ${ThreadStatus.Closed}`;
 
   if (result && result.length === 1) return result[0]?.count || 1;
 

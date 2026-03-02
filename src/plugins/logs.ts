@@ -15,6 +15,7 @@ import * as threads from "../data/threads";
 import type { ModuleProps } from "../plugins";
 import { Emoji } from "../style";
 import { getSelfUrl } from "../utils";
+import { getUserThreadsClosedCount } from "../data/threads";
 
 const LOG_LINES_PER_PAGE = 10;
 
@@ -154,6 +155,12 @@ export default ({ db, commands }: ModuleProps) => {
       (await threads.findByThreadNumber(db, threadId as number));
     if (!thread) return;
 
+    const threadNumber = await getUserThreadsClosedCount(
+      db,
+      thread.user_id,
+      thread.created_at,
+    );
+
     const channel = await msg.channel.fetch();
 
     if (!channel || !channel.isSendable()) return;
@@ -169,7 +176,7 @@ export default ({ db, commands }: ModuleProps) => {
         qs.verbose = args.verbose;
 
       channel.send(
-        `Open the following link to view the log for thread #${thread.thread_number}:\n<${addOptQueryStringToUrl(logUrl, qs)}>`,
+        `Loglink for thread #${threadNumber + 1} with **${thread.user_name}**\n<${addOptQueryStringToUrl(logUrl, qs)}>`,
       );
       return;
     }
