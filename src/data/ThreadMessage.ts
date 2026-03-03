@@ -180,8 +180,13 @@ export class ThreadMessage {
       result = `[${formattedTimestamp}] ${result}`;
     }
 
+    result = result.replace(/@(here|everyone)/g, "@\u200b$1");
+
     return {
       content: result,
+      allowedMentions: {
+        parse: ["users"],
+      },
     };
   }
 
