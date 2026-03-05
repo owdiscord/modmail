@@ -578,7 +578,7 @@ export async function getUserThreadsClosedCount(
 
   if (result && result.length === 1) return result[0]?.count || 1;
 
-  return 1;
+  return 0;
 }
 
 export function formatUsername(inputName: string): string {
