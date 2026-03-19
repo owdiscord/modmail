@@ -288,7 +288,9 @@ async function handleInboxServerMessage(
     const globalErr = await commands.handleCommand(msg, "global");
     if (globalErr) errors.push(globalErr);
 
-    if (errors.length > 0) postError(msg.channel, errors[0] || "");
+    if (errors.length > 0) {
+      postError(msg.channel, "Sorry, we couldn't find that command.");
+    }
 
     return;
   }

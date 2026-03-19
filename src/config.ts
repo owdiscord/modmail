@@ -43,7 +43,7 @@ export type ModmailConfig = {
   inboxPermissions: Array<typeof PermissionFlagsBits | Snowflake>;
   automation: {
     defaultCategory: Snowflake;
-    newThreadCategory: Array<{ guild: Snowflake; category: Snowflake }>;
+    newThreadCategory: Array<{ server: Snowflake; category: Snowflake }>;
   };
   requirements: {
     accountAge: number;

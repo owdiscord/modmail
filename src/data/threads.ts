@@ -128,13 +128,6 @@ export async function createNewThreadForUser(
     // Channel names are particularly picky about what characters they allow, so we gotta do some clean-up
     let channelName = formatUsername(user.username);
 
-    // if (config.anonymizeChannelName) {
-    //   channelName = createHash("md5")
-    //     .update(channelName + Date.now())
-    //     .digest("hex")
-    //     .slice(0, 12);
-    // }
-
     opts.channelName = channelName;
 
     let hookResult: BeforeNewThreadHookResult | undefined;
@@ -209,15 +202,13 @@ export async function createNewThreadForUser(
 
       if (opts.categoryId) return opts.categoryId;
 
-      const guildDefault = config.automation.newThreadCategory.find((c) =>
-        userGuildData.has(c.guild),
+      return config.automation.newThreadCategory.reduce(
+        (acc, { server, category }) => {
+          return userGuildData.has(server) ? category : acc;
+        },
+        config.automation.defaultCategory,
       );
-      if (guildDefault) return guildDefault.category;
-
-      return config.automation.defaultCategory;
     })();
-
-    console.log(parentCategory);
 
     // Attempt to create the inbox channel for this thread
     let createdChannel: TextChannel | undefined;

@@ -86,7 +86,10 @@ export function postLog(
 }
 
 export function postError(channel: Channel, content: string, opts = {}) {
-  console.error(`(ERROR) ${content}`);
+  // Folks, may I proudly present to you...
+  // the epitome of jank:
+  if (!content.includes("couldn't find that command"))
+    console.error(`(ERROR) ${content}`);
 
   if (channel && channel.isSendable()) {
     return channel.send({
