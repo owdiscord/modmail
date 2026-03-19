@@ -91,7 +91,7 @@ export function postError(channel: Channel, content: string, opts = {}) {
   if (!content.includes("couldn't find that command"))
     console.error(`(ERROR) ${content}`);
 
-  if (channel && channel.isSendable()) {
+  if (channel?.isSendable()) {
     return channel.send({
       ...opts,
       content: `❌ ${content}`,

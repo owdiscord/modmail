@@ -4,13 +4,12 @@ import {
   type Client,
   Events,
   type Guild,
+  type Interaction,
   type Message,
+  MessageFlags,
   MessageType,
   type OmitPartialGroupDMChannel,
   type PartialMessage,
-  type Interaction,
-  ContainerComponent,
-  MessageFlags,
 } from "discord.js";
 import { type Commands, createCommandManager } from "./commands";
 import config from "./config";
@@ -20,11 +19,11 @@ import * as threads from "./data/threads";
 import { getAllOpenThreads } from "./data/threads";
 import { useDb } from "./db";
 import { createPluginProps, loadPlugins } from "./plugins";
+import { handleLogPageChange } from "./plugins/logs";
 import { handleSnippet } from "./plugins/snippets";
 import { messageQueue } from "./queue";
 import * as utils from "./utils";
 import { postError } from "./utils";
-import { handleLogPageChange } from "./plugins/logs";
 
 const db = useDb();
 

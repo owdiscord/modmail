@@ -1,4 +1,4 @@
-import { PermissionFlagsBits, type Snowflake } from "discord.js";
+import type { PermissionFlagsBits, Snowflake } from "discord.js";
 import { parse } from "smol-toml";
 
 interface DatabaseConfig {
@@ -176,10 +176,7 @@ async function loadSecrets() {
   config.secrets.database = db;
 }
 
-function deepAssign<T extends Record<string, any>>(
-  target: T,
-  source: Partial<T>,
-): void {
+function deepAssign<T>(target: T, source: Partial<T>): void {
   for (const key in source) {
     const value = source[key];
 

@@ -126,7 +126,7 @@ export async function createNewThreadForUser(
 
     // Use the user's name for the thread channel's name
     // Channel names are particularly picky about what characters they allow, so we gotta do some clean-up
-    let channelName = formatUsername(user.username);
+    const channelName = formatUsername(user.username);
 
     opts.channelName = channelName;
 
@@ -600,13 +600,13 @@ export function levenshteinDistance(a: string, b: string): number {
   for (let i = 1; i <= a.length; i++) {
     for (let j = 1; j <= b.length; j++) {
       if (a[i - 1] === b[j - 1]) {
-        // @ts-ignore It won't be undefined, silly!
+        // @ts-expect-error It won't be undefined, silly!
         dp[i * cols + j] = dp[(i - 1) * cols + (j - 1)];
       } else {
         dp[i * cols + j] =
           1 +
           Math.min(
-            // @ts-ignore Same as above
+            // @ts-expect-error Same as above
             dp[(i - 1) * cols + j],
             dp[i * cols + (j - 1)],
             dp[(i - 1) * cols + (j - 1)],

@@ -231,7 +231,7 @@ export class Thread {
   ): Promise<boolean> {
     if (!moderator) return false;
 
-    let moderatorName = (await getStaffUsername(moderator)).replace(
+    const moderatorName = (await getStaffUsername(moderator)).replace(
       escapeFormattingRegex,
       "\\$&",
     );

@@ -4,7 +4,7 @@ import * as blocked from "../data/blocked";
 import type Thread from "../data/Thread";
 import type { ModuleProps } from "../plugins";
 import { Spacing } from "../style";
-import { getLogChannel, noop } from "../utils";
+import { getLogChannel } from "../utils";
 
 export default ({ bot, config, commands }: ModuleProps) => {
   if (!config.allowBlock) return;

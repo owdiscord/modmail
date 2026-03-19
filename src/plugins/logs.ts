@@ -1,3 +1,4 @@
+import type { SQL } from "bun";
 import {
   ButtonBuilder,
   ButtonStyle,
@@ -12,12 +13,10 @@ import { ThreadStatus } from "../data/constants";
 import { getLogUrl } from "../data/logs";
 import type Thread from "../data/Thread";
 import * as threads from "../data/threads";
+import { getUserThreadsClosedCount } from "../data/threads";
 import type { ModuleProps } from "../plugins";
 import { Emoji } from "../style";
 import { getSelfUrl } from "../utils";
-import { getUserThreadsClosedCount } from "../data/threads";
-import type { SQL } from "bun";
-import bot from "../bot";
 
 const LOG_LINES_PER_PAGE = 12;
 
