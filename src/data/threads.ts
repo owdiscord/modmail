@@ -567,7 +567,7 @@ export async function getUserThreadsClosedCount(
     Array<{ count: number }>
   >`SELECT coalesce(COUNT(id), 0) count FROM threads WHERE user_id = ${user_id} AND created_at <= ${created_time} AND status = ${ThreadStatus.Closed}`;
 
-  if (result && result.length === 1) return result[0]?.count || 1;
+  if (result && result.length === 1) return result[0]?.count || 0;
 
   return 0;
 }
