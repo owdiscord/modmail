@@ -6,6 +6,8 @@ import {
   readMultilineConfigValue,
 } from "../utils";
 import { getDelayFromArgs } from "../utils/time";
+import * as snippets from "../data/snippets";
+import { Collection } from "discord.js";
 
 export default ({ config, commands, db }: ModuleProps) => {
   // Check for threads that are scheduled to be closed and close them
@@ -144,5 +146,52 @@ export default ({ config, commands, db }: ModuleProps) => {
         { name: "cancel", shortcut: "c", isSwitch: true },
       ],
     },
+  );
+
+  // Send a message to the user informing them that the thread will be closing, and close in 2 minutes time.
+  commands.addInboxThreadCommand(
+    "finish",
+    "[opts...]",
+    async (msg, args, thread) => {
+      const opts = (args.opts as Array<string>) || [];
+
+      const finishingMessage =
+        (await snippets.get("else"))?.body ||
+        "Is there anything else I can help you with? If not, this ticket will be closed shortly.";
+
+      try {
+        await thread.replyToUser(
+          msg.member,
+          finishingMessage,
+          new Collection(),
+          false,
+          msg.reference,
+        );
+      } catch (e) {
+        thread.postSystemMessage({
+          content: `Failed to send message to user: ${e}`,
+        });
+      }
+
+      try {
+        // default to 2 minutes
+        const delay = (await getDelayFromArgs(opts)) || 2 * 60 * 1000;
+
+        await thread.scheduleClose(delay, msg.author, false);
+
+        thread.postSystemMessage({
+          content: `Thread is now scheduled to be finished in ${humanizeDelay(delay)}. Use \`${config.prefix}close cancel\` to cancel.`,
+        });
+
+        return;
+      } catch (e: unknown) {
+        thread.postSystemMessage({
+          content: `${e}`,
+        });
+
+        return;
+      }
+    },
+    {},
   );
 };
