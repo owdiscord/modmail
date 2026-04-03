@@ -32,6 +32,7 @@
 		"knub-command-manager": "^6.1.0",
 		"marked": "^17.0.1",
 		"mysql2": "^3.11.3",
+		"pino": "^10.3.1",
 		"public-ip": "^6.0.2",
 		"smol-toml": "^1.6.0",
 		"uuid": "13.0.0",
