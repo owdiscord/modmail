@@ -29,6 +29,7 @@ import {
 import { ThreadMessageType, ThreadStatus } from "./constants";
 import Thread, { type ThreadProps } from "./Thread";
 import ThreadMessage from "./ThreadMessage";
+import logger from "../logger";
 
 let threadCreationQueue: Promise<unknown> = Promise.resolve();
 
@@ -141,7 +142,11 @@ export async function createNewThreadForUser(
       if (hookResult.cancelled) return null;
     }
 
-    console.log(`[NOTE] Creating new thread channel ${opts.channelName}`);
+    const log = logger.child({
+      event: "creating_thread",
+      user,
+      channelName: opts.channelName,
+    });
 
     // Find which main guilds this user is part of
     const mainGuilds = getMainGuilds();
@@ -162,7 +167,12 @@ export async function createNewThreadForUser(
       } catch (e: unknown) {
         // We can safely discard this error, because it just means we couldn't find the member in the guild
         // Which - for obvious reasons - is completely okay.
-        if ((e as DiscordAPIError).code !== 10007) console.log(e);
+        if ((e as DiscordAPIError).code !== 10007) {
+          logger.error({
+            discord_api_code: (e as DiscordAPIError).code,
+            err: e,
+          });
+        }
       }
     }
 
@@ -189,6 +199,7 @@ export async function createNewThreadForUser(
             config.requirements.timeOnServerDeniedMessage,
           );
 
+          log.debug("user has not been on server long enough");
           await user.send(timeOnServerDeniedMessage);
         }
 
@@ -228,15 +239,21 @@ export async function createNewThreadForUser(
         )
       ) {
         const replacedChannelName = "badname";
-        createdChannel = await getInboxGuild().channels.create({
-          name: replacedChannelName,
-          type: ChannelType.GuildText,
-          reason: "New Modmail thread",
-          parent: parentCategory,
-        });
+        createdChannel =
+          (await getInboxGuild()
+            .channels.create({
+              name: replacedChannelName,
+              type: ChannelType.GuildText,
+              reason: "New Modmail thread",
+              parent: parentCategory,
+            })
+            .catch((e) => {
+              log.error({ msg: "can't create channel", err: e });
+            })) || undefined;
       }
 
       if (!createdChannel || !createdChannel.id) {
+        log.error({ msg: "can't create channel", err });
         throw err;
       }
     }
@@ -261,9 +278,11 @@ export async function createNewThreadForUser(
       server_join: serverJoin || new Date(),
     });
 
-    const newThread = await findById(db, newThreadId);
+    const newThread = await findById(db, newThreadId).catch((err) => {
+      log.error({ message: "could not find latest created thread", err });
+    });
     if (!newThread) {
-      console.error("failed to get a new thread");
+      log.error({ message: "could not find latest created thread" });
       return null;
     }
 

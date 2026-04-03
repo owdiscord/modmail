@@ -24,45 +24,45 @@ import { handleSnippet } from "./plugins/snippets";
 import { messageQueue } from "./queue";
 import * as utils from "./utils";
 import { postError } from "./utils";
+import logger from "./logger";
 
 const db = useDb();
 
 export async function start(bot: Client) {
-  console.log("Connecting to Discord...");
+  logger.info("Connecting to discord...");
 
   bot.once(Events.ClientReady, async (readyClient) => {
-    console.log(
-      `Connected as ${readyClient.user.tag}\nWaiting for servers to become available...`,
+    logger.info(
+      {
+        event: "client_ready",
+        clientUser: readyClient.user,
+      },
+      "Connected to Discord",
     );
 
     await new Promise<void>((resolve) => {
       const waitNoteTimeout = setTimeout(() => {
-        console.log(
-          "Servers did not become available after 15 seconds, continuing start-up anyway",
-        );
-        console.log("");
+        logger.info("No servers ready within 15 seconds, starting anyway");
 
         const isSingleServer =
           config.inboxServer && config.mainServers.includes(config.inboxServer);
 
         if (isSingleServer) {
-          console.log(
-            "WARNING: The bot will not work before it's invited to the server.",
+          logger.warn(
+            "The bot will not work before it's invited to the server.",
           );
         } else {
           const hasMultipleMainServers = (config.mainServers || []).length > 1;
           if (hasMultipleMainServers) {
-            console.log(
-              "WARNING: The bot will not function correctly until it's invited to *all* main servers and the inbox server.",
+            logger.warn(
+              "The bot will not function correctly until it's invited to *all* main servers and the inbox server.",
             );
           } else {
-            console.log(
-              "WARNING: The bot will not function correctly until it's invited to *both* the main server and the inbox server.",
+            logger.warn(
+              "The bot will not function correctly until it's invited to *both* the main server and the inbox server.",
             );
           }
         }
-
-        console.log("");
 
         resolve();
       }, 15 * 1000);
@@ -82,20 +82,22 @@ export async function start(bot: Client) {
     initStatus(bot);
     initialiseListeners(bot, commands);
 
-    console.log("Loading plugins...");
+    logger.info("Loading plugins");
     const pluginsLoaded = await loadAllPlugins(bot, commands);
-    console.log(`Loaded ${pluginsLoaded} plugins`);
-    console.log("Done! Now listening to DMs.");
+    logger.info(
+      { count: pluginsLoaded },
+      "Plugins loaded, now listening to DMs",
+    );
 
     const openThreads = await getAllOpenThreads(db);
     for (const thread of openThreads) {
       try {
         await thread.recoverDowntimeMessages();
       } catch (err) {
-        console.error(
-          `Error while recovering messages for ${thread.user_id}: ${err}`,
+        logger.error(
+          { user_id: thread.user_id, err },
+          "Failed to recover messages",
         );
-        console.error(err);
       }
     }
   });
@@ -110,7 +112,7 @@ function waitForGuild(bot: Client, guildId: string) {
   return new Promise<void>((resolve) => {
     const handler = (guild: Guild) => {
       if (guild.id === guildId) {
-        bot.off("guildCreate", handler); // Clean up listener
+        bot.off(Events.GuildCreate, handler); // Clean up listener
         resolve();
       }
     };
@@ -173,8 +175,9 @@ function initialiseListeners(bot: Client, commands: Commands) {
     const thread = await threads.findOpenThreadByChannelId(db, channel.id);
     if (!thread) return;
 
-    console.log(
-      `[INFO] Auto-closing thread with ${thread.user_name} because the channel was deleted`,
+    logger.info(
+      { thread_id: thread.id, username: thread.user_name },
+      "auto-closing thread as the channel was deleted",
     );
     if (config.closeMessage) {
       const closeMessage = utils.readMultilineConfigValue(config.closeMessage);
@@ -325,20 +328,30 @@ async function handleUserDM(_bot: Client, msg: Message) {
   if (msg.type !== MessageType.Default && msg.type !== MessageType.Reply)
     return; // Ignore pins etc.
 
+  const log = logger.child({
+    event: "dm",
+    author: msg.author.id,
+    author_name: msg.author.username || "n/a",
+    content: msg.content,
+  });
+
   const channel = await msg.channel.fetch();
   if (!channel || !channel.isSendable()) return;
 
   if (await blocked.isBlocked(msg.author.id)) {
-    // FIXME: Confirm we can kill this.
-    // if (config.blockedReply != null) {
-    //   // Ignore silently if this fails
-    //   channel.send(config.blockedReply || "").catch(utils.noop);
-    // }
+    log.debug({ failed_because: "user is blocked" });
+
     return;
   }
 
-  const author = await msg.author.fetch();
-  if (!author) throw "utter flop";
+  const author = await msg.author.fetch().catch((e) => {
+    log.debug({ failed_because: "no author", err: e });
+    return;
+  });
+  if (!author) {
+    log.debug({ failed_because: "no author" });
+    throw "could not retrieve author for received DM";
+  }
 
   // Private message handling is queued so e.g. multiple message in quick succession don't result in multiple channels being created
   messageQueue.add(async () => {
@@ -355,15 +368,36 @@ async function handleUserDM(_bot: Client, msg: Message) {
       )
         return;
 
-      const newThread = await threads.createNewThreadForUser(db, author, {
-        quiet: false,
-        source: "dm",
-        message: msg,
-      });
-      if (newThread) thread = newThread;
+      const newThread = await threads
+        .createNewThreadForUser(db, author, {
+          quiet: false,
+          source: "dm",
+          message: msg,
+        })
+        .catch((e) => {
+          log.error({
+            failed_because: "could not make new thread",
+            err: e,
+          });
+        });
+      if (newThread) {
+        thread = newThread;
+        log.debug({
+          thread: newThread.id,
+          status: "receiving reply in new thread",
+        });
+      } else {
+        log.error({
+          failed_because: "could not make new thread",
+        });
+      }
     }
 
     if (thread) {
+      log.debug({
+        thread: thread.id,
+        status: "receiving reply in existing thread",
+      });
       await thread.receiveUserReply(msg);
 
       if (createNewThread) {
@@ -450,7 +484,7 @@ async function handleMessageEdit(
         });
       }
     } catch (e) {
-      console.warn(e);
+      logger.error({ err: e });
     }
 
     // Only post a system log if the messages are significantly
@@ -530,7 +564,10 @@ async function handleInteractionCreate(bot: Client, interaction: Interaction) {
     });
   }
 
-  console.log(`Interaction ${interaction.id} wasn't matched with a handler.`);
+  logger.error(
+    { interaction_id: interaction.id },
+    "interaction did not match any handler",
+  );
 }
 
 async function loadAllPlugins(

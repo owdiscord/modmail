@@ -17,6 +17,7 @@ import { getUserThreadsClosedCount } from "../data/threads";
 import type { ModuleProps } from "../plugins";
 import { Emoji } from "../style";
 import { getSelfUrl } from "../utils";
+import logger from "../logger";
 
 const LOG_LINES_PER_PAGE = 12;
 
@@ -197,7 +198,11 @@ export default ({ db, commands }: ModuleProps) => {
           msg.channel.send(
             "Could not find a thread matching that ID or thread number.",
           );
-        else console.error(`Could not find a thread matching ${args.thread}`);
+        else
+          logger.error(
+            { thread: args.thread },
+            `Could not find a matching thread`,
+          );
 
         return;
       }

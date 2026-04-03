@@ -5,6 +5,7 @@ import type Thread from "../data/Thread";
 import type { ModuleProps } from "../plugins";
 import { Spacing } from "../style";
 import { getLogChannel } from "../utils";
+import logger from "../logger";
 
 export default ({ bot, config, commands }: ModuleProps) => {
   if (!config.allowBlock) return;
@@ -34,7 +35,7 @@ export default ({ bot, config, commands }: ModuleProps) => {
     try {
       await removeExpiredBlocks();
     } catch (e) {
-      console.error(e);
+      logger.error({ err: e }, "cannot remove expired blocks");
     }
 
     setTimeout(expiredBlockLoop, 2000);

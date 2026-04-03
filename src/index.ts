@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import { serve } from "bun";
-// import { doMigration } from "./migrate";
 import { BotError } from "./BotError";
 import bot from "./bot";
 import { getPrettyVersion } from "./botVersion";
@@ -113,7 +112,7 @@ modules.forEach((mod) => {
 (async () => {
   await migrateAllUp();
 
-  // // Start the bot
+  // Start the bot
   start(bot);
 
   // Run the webserver

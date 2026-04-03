@@ -1,6 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { useDb } from "./db";
 import { noop } from "./utils";
+import logger from "./logger";
 
 const db = useDb();
 const migrationTableName = "schema_migrations";
@@ -16,7 +17,10 @@ async function createMigrationTable() {
 SET name = SUBSTRING(name, 1, LENGTH(name) - 3)
 WHERE name LIKE '%.js';`;
   } catch (e) {
-    console.error(e);
+    logger.error(
+      { err: e },
+      "could not fix migration table to remove .js extension",
+    );
     process.exit(1);
   }
 
@@ -69,8 +73,9 @@ export async function migrateDown(migration: string, force = false) {
   if (!force) {
     const applied = await getAppliedMigrations();
     if (!applied.has(migration)) {
-      console.error(
-        "[migrate] the migration you attempted to down does not exist or has not been run",
+      logger.error(
+        { migration, applied },
+        "the migration you attempted to down does not exist or has not been run",
       );
       process.exit(1);
     }
@@ -79,8 +84,9 @@ export async function migrateDown(migration: string, force = false) {
   const migrations = await getMigrationsFromFilesystem();
   const found = migrations.find((mig) => mig.name === migration);
   if (!found) {
-    console.error(
-      "[migrate] the migration you attempted to down does not exist in the filesystem",
+    logger.error(
+      { migration },
+      "the migration you attempted to down does not exist in the filesystem",
     );
     process.exit(1);
   }
@@ -92,12 +98,12 @@ export async function migrateDown(migration: string, force = false) {
       await sql.unsafe(down);
       await sql`DELETE FROM ${sql(migrationTableName)} WHERE name = ${name}`;
     } catch (e) {
-      console.error(`[migrate] Failed to down ${name}:\n${e}`);
+      logger.error({ migration, err: e }, "failed to down migration");
       process.exit(1);
     }
   });
 
-  console.log(`[migrate] Downed ${name}`);
+  logger.info({ migration, downed: true });
 }
 
 export async function migrateAllUp() {
@@ -106,7 +112,7 @@ export async function migrateAllUp() {
 
   const applied = await getAppliedMigrations();
 
-  console.log("[migrate] Reading migration directory");
+  logger.info("reading migrations directory");
   const migrations = await getMigrationsFromFilesystem();
 
   let count = 0;
@@ -117,16 +123,16 @@ export async function migrateAllUp() {
           await sql.unsafe(up);
           await sql`INSERT INTO ${sql(migrationTableName)} (name, batch, migration_time) VALUES (${name}, 1, now())`;
         });
-        console.log(`[migrate] Ran ${name}`);
+
+        logger.info({ migration: name, upped: true });
         count++;
       } catch (e) {
-        console.error(`[migrate] Failed to run ${name}:\n${e}`);
+        logger.error({ migration: name, err: e });
         process.exit(1);
       }
   }
 
-  if (count > 0)
-    console.log(`[migrate] Successfully ran ${count} migration(s).`);
+  if (count > 0) logger.info({ count }, "migrations run successfully");
 }
 
 if (import.meta.main) {

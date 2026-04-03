@@ -8,6 +8,7 @@ import {
 import { getDelayFromArgs } from "../utils/time";
 import * as snippets from "../data/snippets";
 import { Collection } from "discord.js";
+import logger from "../logger";
 
 export default ({ config, commands, db }: ModuleProps) => {
   // Check for threads that are scheduled to be closed and close them
@@ -42,7 +43,7 @@ export default ({ config, commands, db }: ModuleProps) => {
     try {
       await applyScheduledCloses();
     } catch (e) {
-      console.error(e);
+      logger.error({ err: e }, "cannot apply scheduled closes");
     }
 
     setTimeout(scheduledCloseLoop, 2000);

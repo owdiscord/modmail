@@ -65,6 +65,7 @@ import {
   getUserThreadsClosedCount,
 } from "./threads";
 import { userGuildStatus } from "./users";
+import logger from "../logger";
 
 const escapeFormattingRegex = /[_`~*|]/g;
 
@@ -182,15 +183,26 @@ export class Thread {
       if (err instanceof DiscordAPIError) {
         // Channel not found
         if (err.code === 10003) {
-          console.log(
-            `[INFO] Failed to send message to thread channel for ${this.user_name} because the channel no longer exists. Auto-closing the thread.`,
+          logger.info(
+            {
+              thread_id: this.id,
+              username: this.user_name,
+              user_id: this.user_id,
+            },
+            `thread channel no longer exists, auto closing without sending message.`,
           );
           this.close("system", true);
         }
 
         if (err.code === 240000) {
-          console.log(
-            `[INFO] Failed to send message to thread channel for ${this.user_name} because the message contains a link blocked by the harmful links filter`,
+          logger.info(
+            {
+              thread_id: this.id,
+              channel_id: this.channel_id,
+              username: this.user_name,
+              user_id: this.user_id,
+            },
+            `cannot send message to thread, the message contains a link blocked by the harmful links filter.`,
           );
 
           (
@@ -204,9 +216,17 @@ export class Thread {
       }
     }
 
-    console.error(
-      `You're on your own, bossman.\nPayload:\n${JSON.stringify(message, null, 2)}`,
+    logger.error(
+      {
+        thread_id: this.id,
+        channel_id: this.channel_id,
+        username: this.user_name,
+        user_id: this.user_id,
+        message,
+      },
+      "cannot post to thread channel",
     );
+
     throw "something truly wild has happend";
   }
 
@@ -803,9 +823,14 @@ export class Thread {
     suppressSystemMessage = false,
     silent = false,
   ): Promise<void> {
-    if (!suppressSystemMessage) {
-      console.log(`Closing thread ${this.id}`);
+    const log = logger.child({
+      msg: `Closing thread ${this.id}`,
+      user_id: this.user_id,
+      username: this.user_name,
+      silent,
+    });
 
+    if (!suppressSystemMessage) {
       if (silent) {
         await this.postSystemMessage("Closing thread silently...");
       } else {
@@ -820,7 +845,7 @@ export class Thread {
     // Delete channel
     const channel = await bot.channels.fetch(this.channel_id);
     if (channel) {
-      console.log(`Deleting channel ${this.channel_id}`);
+      log.info({ channel: this.channel_id });
       await channel.delete("Thread closed");
     }
 
@@ -920,7 +945,11 @@ export class Thread {
   }
 
   async deleteAlerts(): Promise<void> {
-    console.log(`Removing alerts for thread ${this.id}`);
+    logger.info(
+      { thread_id: this.id, username: this.user_name },
+      "removing alerts for thread",
+    );
+
     this.db`UPDATE threads SET alert_ids = NULL WHERE id = ${this.id}`.catch(
       console.error,
     );

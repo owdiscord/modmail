@@ -22,6 +22,7 @@ import { BotError } from "./BotError";
 import bot from "./bot";
 import config from "./config";
 import type Thread from "./data/Thread";
+import logger from "./logger";
 
 const userMentionRegex = /^<@!?([0-9]+?)>$/;
 
@@ -44,9 +45,15 @@ export function getMainGuilds(): Array<Guild> {
 
   if (mainGuilds.length !== config.mainServers.length) {
     if (config.mainServers.length === 1) {
-      console.warn("[WARN] The bot hasn't joined the main guild!");
+      logger.warn(
+        { guild_ids: config.mainServers },
+        "the bot has not joined the main guild!",
+      );
     } else {
-      console.warn("[WARN] The bot hasn't joined one or more main guilds!");
+      logger.warn(
+        { guild_ids: config.mainServers },
+        "the bot has not joined one or more of the main guilds!",
+      );
     }
   }
 
@@ -89,7 +96,7 @@ export function postError(channel: Channel, content: string, opts = {}) {
   // Folks, may I proudly present to you...
   // the epitome of jank:
   if (!content.includes("couldn't find that command"))
-    console.error(`(ERROR) ${content}`);
+    logger.error({ channel_id: channel.id }, content);
 
   if (channel?.isSendable()) {
     return channel.send({
@@ -176,7 +183,7 @@ let cachedIpPromise: Promise<string> | null = null;
 export async function getSelfIp(): Promise<string> {
   if (!cachedIpPromise) {
     cachedIpPromise = publicIp({ timeout: 1000 }).catch((err) => {
-      console.warn(`Error while fetching public ip: ${err}`);
+      logger.error({ err }, "could not fetch public IP");
       return "UNKNOWN";
     });
   }
