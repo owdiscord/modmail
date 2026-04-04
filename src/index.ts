@@ -9,6 +9,7 @@ import { start } from "./main";
 import { migrateAllUp } from "./migrate";
 import { PluginInstallationError } from "./PluginInstallationError";
 import web from "./web";
+import logger from "./logger";
 
 const bunVersion = process.versions.bun.split(".").map(parseInt) as [
   number,
@@ -111,6 +112,8 @@ modules.forEach((mod) => {
 
 (async () => {
   await migrateAllUp();
+
+  logger.info(`Pino opened on level ${process.env.PINO_LOG_LEVEL}`);
 
   // Start the bot
   start(bot);

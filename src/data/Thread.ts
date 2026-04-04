@@ -1122,18 +1122,28 @@ export class Thread {
   }
 
   public async getDMChannel(): Promise<DMChannel> {
-    const user = await bot.users.fetch(this.user_id);
-    const dmChannel = await user.createDM();
+    try {
+      const user = await bot.users.fetch(this.user_id);
+      const dmChannel = await user.createDM();
 
-    return dmChannel;
+      return dmChannel;
+    } catch (err) {
+      logger.error({ thread_id: this.id, user_id: this.user_id, err });
+      throw err;
+    }
   }
 
   public async getThreadChannel(): Promise<SendableChannels> {
-    const channel = await bot.channels.fetch(this.channel_id);
+    try {
+      const channel = await bot.channels.fetch(this.channel_id);
 
-    if (channel?.isSendable()) return channel;
+      if (channel?.isSendable()) return channel;
 
-    throw "it was impossible to retrieve the thread channel";
+      throw "it was impossible to retrieve the thread channel";
+    } catch (err) {
+      logger.error({ thread_id: this.id, user_id: this.user_id, err });
+      throw err;
+    }
   }
 
   public async sendInfoHeader(

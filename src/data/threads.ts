@@ -168,8 +168,12 @@ export async function createNewThreadForUser(
         // We can safely discard this error, because it just means we couldn't find the member in the guild
         // Which - for obvious reasons - is completely okay.
         if ((e as DiscordAPIError).code !== 10007) {
-          logger.error({
+          logger.debug({
             discord_api_code: (e as DiscordAPIError).code,
+            err: e,
+          });
+        } else {
+          logger.error({
             err: e,
           });
         }
