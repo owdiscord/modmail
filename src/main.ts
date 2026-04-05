@@ -357,6 +357,7 @@ async function handleUserDM(_bot: Client, msg: Message) {
   messageQueue.add(async () => {
     let thread = await threads.findOpenThreadByUserId(db, msg.author.id);
     const createNewThread = thread == null;
+    log.debug({ thread }, "adding message to queue");
 
     // New thread
     if (createNewThread) {
