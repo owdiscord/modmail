@@ -328,6 +328,8 @@ async function handleUserDM(_bot: Client, msg: Message) {
   if (msg.type !== MessageType.Default && msg.type !== MessageType.Reply)
     return; // Ignore pins etc.
 
+  logger.debug({ author: msg.author, content: msg.content, event: "dm" });
+
   const log = logger.child({
     event: "dm",
     author: msg.author.id,
