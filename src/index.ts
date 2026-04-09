@@ -110,6 +110,28 @@ modules.forEach((mod) => {
   }
 });
 
+/*
+ * DEBUG: Override the global fetch object
+ **/
+const originalFetch = globalThis.fetch;
+globalThis.fetch = Object.assign(
+  async (
+    url: Parameters<typeof fetch>[0],
+    options?: Parameters<typeof fetch>[1],
+  ) => {
+    if (url.toString().includes("discord.com/api") && options?.body) {
+      console.log("[Discord Request]", url);
+      try {
+        console.log(JSON.parse(options.body as string));
+      } catch {
+        console.log(options.body);
+      }
+    }
+    return originalFetch(url, options as RequestInit);
+  },
+  originalFetch,
+);
+
 (async () => {
   await migrateAllUp();
 
