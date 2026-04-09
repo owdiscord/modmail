@@ -119,7 +119,7 @@ globalThis.fetch = Object.assign(
     url: Parameters<typeof fetch>[0],
     options?: Parameters<typeof fetch>[1],
   ) => {
-    if (url.toString().includes("discord.com/api") && options?.body) {
+    if (url.toString().includes("discord") && options?.body) {
       console.log("[Discord Request]", url);
       try {
         console.log(JSON.parse(options.body as string));
