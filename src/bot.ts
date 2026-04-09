@@ -30,7 +30,8 @@ bot.rest.on("response", async (req, res) => {
     method: req.method,
     path: req.path,
     status: res.status,
-    body: await res.text(),
+    reqBody: req.data,
+    resBody: await res.text(),
   });
 });
 
