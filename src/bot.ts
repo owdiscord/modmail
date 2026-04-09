@@ -26,7 +26,7 @@ const bot = new Client({
 // DEBUG: Intercept REST requests to log fully
 bot.rest.on("restDebug", (info) => console.log("[REST Debug]", info));
 bot.rest.on("response", async (req, res) => {
-  console.log("[REST Response]", req.method, req.path, res.status);
+  console.log("[REST Response]", req.method, req.path, res.status, res.body);
 });
 
 export default bot;
