@@ -153,6 +153,9 @@ export class Thread {
 
     this.server_join = props.server_join;
     if (props.roles) this.roles = props.roles;
+
+    logger.debug(Object.fromEntries(
+      Object.entries(this).filter(([_, value]) => typeof value !== 'function')), "thread created")
   }
 
   async postToThreadChannel(message: MessageCreateOptions): Promise<Message> {
@@ -433,7 +436,7 @@ export class Thread {
   }
 
   async receiveUserReply(msg: Message, skipAlert = false): Promise<void> {
-    const user = msg.author;
+    const user = await bot.users.fetch(msg.author.id);
     const opts = {
       thread: this,
       message: msg,
@@ -698,6 +701,7 @@ export class Thread {
     } = {},
   ): Promise<void> {
     const user = await bot.users.fetch(this.user_id);
+    if (!user) throw `user (${this.user_id}) could not be retrieved`;
 
     const threadMessage = new ThreadMessage({
       thread_id: this.id,
@@ -706,8 +710,6 @@ export class Thread {
       body: text,
       is_anonymous: false,
     });
-
-    if (!user) throw `user (${this.user_id}) could not be retrieved`;
 
     const dmMessage = await user
       .send(threadMessage.formatAsSystemToUserDM())
