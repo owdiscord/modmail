@@ -324,6 +324,8 @@ async function handleInboxServerMessage(
  * Handle DMs from users
  */
 async function handleUserDM(_bot: Client, msg: Message) {
+  logger.debug({ msg }, "receied a new DM");
+
   if (msg.author.bot) return;
   if (msg.type !== MessageType.Default && msg.type !== MessageType.Reply)
     return; // Ignore pins etc.
