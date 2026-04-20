@@ -1,7 +1,6 @@
 import type { SQL } from "bun";
 import {
   type Attachment,
-  AttachmentBuilder,
   Collection,
   DiscordAPIError,
   type DMChannel,
@@ -66,6 +65,7 @@ import {
 } from "./threads";
 import { userGuildStatus } from "./users";
 import logger from "../logger";
+import {BotError} from "../BotError.ts";
 
 const escapeFormattingRegex = /[_`~*|]/g;
 
@@ -86,15 +86,15 @@ export type ThreadProps = {
   scheduled_suspend_name?: string;
   alert_ids: string;
   log_storage_type: string;
-  log_storage_data: object;
+  log_storage_data: Record<string, unknown> | string;
   created_at?: Date;
-  metadata: string;
+  metadata: Record<string, unknown> | string;
   roles?: Array<string>;
   server_join: Date;
 };
 
 export class Thread {
-  private db: SQL;
+  private readonly db: SQL;
   public id: string;
   public thread_number: number | null;
   public status: number;
@@ -191,7 +191,7 @@ export class Thread {
             },
             `thread channel no longer exists, auto closing without sending message.`,
           );
-          this.close("system", true);
+          await this.close("system", true);
         }
 
         if (err.code === 240000) {
@@ -205,7 +205,7 @@ export class Thread {
             `cannot send message to thread, the message contains a link blocked by the harmful links filter.`,
           );
 
-          (
+          await (
             (await bot.channels.fetch(this.channel_id)) as SendableChannels
           ).send(
             "Failed to send message to thread channel because the message contains a link blocked by the harmful links filter",
@@ -227,7 +227,7 @@ export class Thread {
       "cannot post to thread channel",
     );
 
-    throw "something truly wild has happend";
+    throw "something truly wild has happened";
   }
 
   async _startAutoAlertTimer(modId: string): Promise<void> {
@@ -302,7 +302,7 @@ export class Thread {
       );
 
       if (config.errorOnUnknownInlineSnippet && unknownSnippets.size > 0) {
-        this.postSystemMessage(
+        await this.postSystemMessage(
           `The following snippets used in the reply do not exist:\n${Array.from(unknownSnippets).join(", ")}`,
         );
         return false;
@@ -325,13 +325,31 @@ export class Thread {
       }
     }
 
-    const user = await bot.users.fetch(this.user_id).catch(() => {
-      throw "the bot may be blocked or missing permissions.";
-    });
+    // Re-fetch the user to avoid using a stale/partial cached User object,
+    // which can cause Discord to reject createDM() with 50035 CHANNEL_RECIPIENT_REQUIRED.
+    let user;
+    try {
+      user = await bot.users.fetch(this.user_id, { force: true });
+    } catch (err) {
+      throw new BotError(
+        `Could not fetch user ${this.user_id} to open a DM: ${(err as Error).message}`,
+      );
+    }
 
-    if (!user) return false;
-
-    const dmChannel = await user.createDM(true);
+    let dmChannel;
+    try {
+      dmChannel = await user.createDM(true);
+    } catch (err: any) {
+      // 50035 CHANNEL_RECIPIENT_REQUIRED -- Discord refuses to open a DM with this user
+      // (their account is deleted, disabled, not sharing a guild with the bot, or transient backend issue).
+      if (err?.code === 50035) {
+        throw new BotError(
+          `Unable to open a DM channel with <@${user.id}>. ` +
+            `The account may be deleted/disabled or not share a server with the bot.`,
+        );
+      }
+      throw err;
+    }
 
     const threadMessage = new ThreadMessage({
       thread_id: this.id,
@@ -408,7 +426,7 @@ export class Thread {
 
     // If enabled, set up a reply alert for the moderator after a slight delay
     if (config.autoAlert) {
-      this._startAutoAlertTimer(moderator.id);
+      await this._startAutoAlertTimer(moderator.id);
     }
 
     return true;
@@ -441,18 +459,18 @@ export class Thread {
     }
 
     const attachmentUrls: Array<string> = [];
-    const files: Array<AttachmentBuilder> = [];
+    // const files: Array<AttachmentBuilder> = [];
 
     for (const attachment of allMessageAttachments.values()) {
       const savedAttachment = await saveAttachment(attachment);
 
       if (savedAttachment) {
         attachmentUrls.push(savedAttachment);
-        files.push(
-          new AttachmentBuilder(savedAttachment, {
-            name: attachment.name,
-          }),
-        );
+        // files.push(
+        //   new AttachmentBuilder(savedAttachment, {
+        //     name: attachment.name,
+        //   }),
+        // );
       }
     }
 
@@ -506,19 +524,20 @@ export class Thread {
         applicationName = "Spotify";
       }
 
-      let activityText = "";
-      if (
-        msg.activity.type === MessageActivityType.Join ||
-        msg.activity.type === MessageActivityType.JoinRequest
-      ) {
-        activityText = "join a game";
-      } else if (msg.activity.type === MessageActivityType.Spectate) {
-        activityText = "spectate";
-      } else if (msg.activity.type === MessageActivityType.Listen) {
-        activityText = "listen along";
-      } else {
-        activityText = "do something";
-      }
+      const activityText = ((): string => {
+        if (
+          msg.activity.type === MessageActivityType.Join ||
+          msg.activity.type === MessageActivityType.JoinRequest
+        ) {
+          return "join a game";
+        } else if (msg.activity.type === MessageActivityType.Spectate) {
+          return "spectate";
+        } else if (msg.activity.type === MessageActivityType.Listen) {
+          return "listen along";
+        }
+
+        return "do something";
+      })();
 
       messageContent += `\n\n*<This message contains an invite to ${activityText} on ${applicationName}>*`;
       messageContent = messageContent.trim();
@@ -557,7 +576,7 @@ export class Thread {
       },
     });
 
-    // Show user reply in the inbox thread
+    // Show the user reply in the inbox thread
     const inboxContent = threadMessage.formatAsUserReply();
 
     if (messageReply) {
@@ -784,14 +803,15 @@ export class Thread {
     throw "[getThreadMessageForMessageId@Thread.ts:804] could not get thread message";
   }
 
-  async findThreadMessageByDmMessageId(messageId: string) {
-    const data = await this
-      .db`SELECT * FROM thread_messages WHERE thread_id = ${this.id} AND dm_message_id = ${messageId}`;
-
-    if (data && data.length === 1) return new ThreadMessage(data[0]);
-
-    throw "[findThreadMessageByDmMessageId@Thread.ts:813] could not get thread message";
-  }
+  // TODO: Evaluate if we need this function, or if we can just use getThreadMessageForMessageId
+  // async findThreadMessageByDmMessageId(messageId: string) {
+  //   const data = await this
+  //     .db`SELECT * FROM thread_messages WHERE thread_id = ${this.id} AND dm_message_id = ${messageId}`;
+  //
+  //   if (data && data.length === 1) return new ThreadMessage(data[0]);
+  //
+  //   throw "[findThreadMessageByDmMessageId@Thread.ts:813] could not get thread message";
+  // }
 
   async getLatestThreadMessage(): Promise<ThreadMessage> {
     const types = [
@@ -1065,23 +1085,24 @@ export class Thread {
     await threadMessage.deleteFromDb(this.db);
   }
 
-  async updateLogStorageValues(
-    storageType: string,
-    storageData:
-      | {
-          fullPath?: string;
-          filename: string;
-        }
-      | string,
-  ): Promise<void> {
-    this.log_storage_type = storageType;
-    this.log_storage_data = storageData;
-
-    await this.db`UPDATE threads SET ${this.db({
-      log_storage_type: storageType,
-      log_storage_data: JSON.stringify(storageData),
-    })} WHERE id = ${this.id}`;
-  }
+  // TODO: Evaluate whether we still need this function, it is unused.
+  // async updateLogStorageValues(
+  //   storageType: string,
+  //   storageData:
+  //     | {
+  //         fullPath?: string;
+  //         filename: string;
+  //       }
+  //     | string,
+  // ): Promise<void> {
+  //   this.log_storage_type = storageType;
+  //   this.log_storage_data = storageData;
+  //
+  //   await this.db`UPDATE threads SET ${this.db({
+  //     log_storage_type: storageType,
+  //     log_storage_data: JSON.stringify(storageData),
+  //   })} WHERE id = ${this.id}`;
+  // }
 
   isClosed() {
     return this.status === ThreadStatus.Closed;
@@ -1124,9 +1145,7 @@ export class Thread {
   public async getDMChannel(): Promise<DMChannel> {
     try {
       const user = await bot.users.fetch(this.user_id);
-      const dmChannel = await user.createDM();
-
-      return dmChannel;
+      return await user.createDM();
     } catch (err) {
       logger.error({ thread_id: this.id, user_id: this.user_id, err });
       throw err;
@@ -1402,9 +1421,7 @@ export class Thread {
       is_anonymous: false,
     }).saveToDb(this.db);
 
-    if (message) return true;
-
-    return false;
+    return !!message
   }
 
   public async getCloseEmbed(closer_id: string): Promise<EmbedBuilder | null> {
