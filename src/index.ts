@@ -10,6 +10,7 @@ import { migrateAllUp } from "./migrate";
 import { PluginInstallationError } from "./PluginInstallationError";
 import web from "./web";
 import logger from "./logger";
+import { version as djsVersion } from "discord.js";
 
 const bunVersion = process.versions.bun.split(".").map(parseInt) as [
   number,
@@ -22,7 +23,7 @@ if (bunVersion[0] < 1 || bunVersion[1] < 3) {
   process.exit(1);
 }
 
-const djsVersion = (() => {
+const djsVersionLock = (() => {
   const proc = Bun.spawnSync(["bun", "pm", "ls"], { stdout: "pipe" });
   const output = proc.stdout.toString();
   const match = output.match(new RegExp(`discord\.js@([\\d.]+)`));
@@ -32,7 +33,7 @@ const djsVersion = (() => {
 
 // Print out bot and Bun version
 console.log(
-  `Starting Modmail ${getPrettyVersion()} on Bun ${process.versions.bun} (${process.arch}) with Discord.js version ${djsVersion}`,
+  `Starting Modmail ${getPrettyVersion()} on Bun ${process.versions.bun} (${process.arch}) with Discord.js version ${djsVersion} (locked at ${djsVersionLock})`,
 );
 
 // Verify node modules have been installed
