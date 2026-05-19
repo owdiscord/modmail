@@ -1,23 +1,24 @@
-import { SQL } from "bun";
 import config from "./config";
+import { type Pool, type PoolOptions, createPool } from "mysql2/promise";
 
-let db: SQL | null = null;
+let db: Pool | null = null;
 
-export function useDb(): SQL {
+export function useDb(): Pool {
   if (db) return db;
 
-  db = new SQL({
-    adapter: "mysql",
-    hostname: config.secrets.database.host,
+  const options: PoolOptions = {
+    host: config.secrets.database.host,
     port: config.secrets.database.port,
     database: config.secrets.database.database,
-    username: config.secrets.database.user,
+    user: config.secrets.database.user,
     password: config.secrets.database.password,
-  });
+    timezone: "+00:00",
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
+  };
 
-  db`SET time_zone = '+00:00';`.catch((e) =>
-    console.error(`could not set timezone: ${e}`),
-  );
+  db = createPool(options);
 
   return db;
 }

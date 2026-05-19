@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Attachment, SendableChannels } from "discord.js";
 import { getSelfUrl } from "../utils";
+import { copyFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 
 async function saveLocalAttachment(attachment: Attachment): Promise<string> {
   const targetPath = getLocalAttachmentPath(attachment.id);
@@ -19,7 +21,7 @@ async function saveLocalAttachment(attachment: Attachment): Promise<string> {
 
   try {
     // Move the temp file to the attachment folder
-    await Bun.write(targetPath, Bun.file(downloadResult.path));
+    await copyFile(downloadResult.path, targetPath);
 
     // Clean up the temp file
     await downloadResult.cleanup();
@@ -53,7 +55,7 @@ export async function downloadAttachment(attachment: Attachment, tries = 0) {
     }
 
     // Write the response directly to file
-    await Bun.write(filepath, response);
+    await writeFile(filepath, await response.text());
 
     return {
       path: filepath,

@@ -2,20 +2,23 @@ import { readdir } from "node:fs/promises";
 import { useDb } from "./db";
 import { noop } from "./utils";
 import logger from "./logger";
+import { readFile } from "node:fs/promises";
+import type { RowDataPacket } from "mysql2/promise";
+import { writeFile } from "node:fs/promises";
 
 const db = useDb();
 const migrationTableName = "schema_migrations";
 
 async function createMigrationTable() {
   // First, just make sure we are migrating any old knex stuff
-  await db`RENAME TABLE knex_migrations TO ${db(migrationTableName)};`.catch(
-    (_) => noop(),
-  );
+  await db
+    .execute(`RENAME TABLE knex_migrations TO ${migrationTableName};`)
+    .catch((_) => noop());
 
   try {
-    await db`UPDATE ${db(migrationTableName)}
+    await db.execute(`UPDATE ${migrationTableName}
 SET name = SUBSTRING(name, 1, LENGTH(name) - 3)
-WHERE name LIKE '%.js';`;
+WHERE name LIKE '%.js';`);
   } catch (e) {
     logger.error(
       { err: e },
@@ -24,18 +27,18 @@ WHERE name LIKE '%.js';`;
     process.exit(1);
   }
 
-  await db`CREATE TABLE IF NOT EXISTS ${db(migrationTableName)} (
+  await db.execute(`CREATE TABLE IF NOT EXISTS ${migrationTableName} (
     id integer PRIMARY KEY,
     name varchar(256) NOT NULL,
     batch integer NOT NULL DEFAULT 1,
     migration_time datetime DEFAULT now()
-  )`;
+  )`);
 }
 
 async function getAppliedMigrations(): Promise<Set<string>> {
-  const rows = await db<
-    { name: string }[]
-  >`SELECT name FROM ${db(migrationTableName)}`;
+  const [rows] = await db.execute<(RowDataPacket & { name: string })[]>(
+    `SELECT name FROM ${migrationTableName}`,
+  );
 
   return new Set(rows.map((row) => row.name));
 }
@@ -51,7 +54,7 @@ async function getMigrationsFromFilesystem(): Promise<
     files.map(async (name) => {
       if (!name.endsWith(".sql")) return null;
 
-      const contents = await Bun.file(`./migrations/${name}`).text();
+      const contents = await readFile(`./migrations/${name}`, "utf-8");
       const upMatch = contents.match(
         /-- migrate:up\s+([\s\S]*?)(?=-- migrate:down|$)/,
       );
@@ -93,15 +96,19 @@ export async function migrateDown(migration: string, force = false) {
 
   const { down, name } = found;
 
-  await db.begin(async (sql) => {
-    try {
-      await sql.unsafe(down);
-      await sql`DELETE FROM ${sql(migrationTableName)} WHERE name = ${name}`;
-    } catch (e) {
-      logger.error({ migration, err: e }, "failed to down migration");
-      process.exit(1);
-    }
-  });
+  await db.beginTransaction();
+
+  try {
+    await db.beginTransaction();
+    await db.execute(down);
+    await db.execute(`DELETE FROM ${migrationTableName} WHERE name = ?`, [
+      name,
+    ]);
+    await db.commit();
+  } catch (e) {
+    logger.error({ migration, err: e }, "failed to down migration");
+    process.exit(1);
+  }
 
   logger.info({ migration, downed: true });
 }
@@ -119,10 +126,13 @@ export async function migrateAllUp() {
   for (const { name, up } of migrations) {
     if (!applied.has(name))
       try {
-        await db.begin(async (sql) => {
-          await sql.unsafe(up);
-          await sql`INSERT INTO ${sql(migrationTableName)} (name, batch, migration_time) VALUES (${name}, 1, now())`;
-        });
+        await db.beginTransaction();
+        await db.execute(up);
+        await db.execute(
+          `INSERT INTO ${migrationTableName} (name, batch, migration_time) VALUES (?, 1, now())`,
+          [name],
+        );
+        await db.commit();
 
         logger.info({ migration: name, upped: true });
         count++;
@@ -150,7 +160,7 @@ if (import.meta.main) {
       .map((arg) => arg.toLowerCase().trim().replace(/[.\s]/g, "_"))
       .join("_")}.sql`;
     console.log(`[migrate] created migration ${fileName}`);
-    await Bun.write(
+    await writeFile(
       `./migrations/${fileName}`,
       "-- migrate:up\n\n\n-- migrate:down\n\n",
     );

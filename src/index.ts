@@ -1,39 +1,42 @@
-import fs from "node:fs";
+import fs, { readFileSync } from "node:fs";
 import path from "node:path";
-import { serve } from "bun";
 import { BotError } from "./BotError";
 import bot from "./bot";
+import { serve } from "@hono/node-server";
 import { getPrettyVersion } from "./botVersion";
-import config from "./config";
 import { start } from "./main";
 import { migrateAllUp } from "./migrate";
 import { PluginInstallationError } from "./PluginInstallationError";
 import web from "./web";
 import logger from "./logger";
 import { version as djsVersion } from "discord.js";
+import { execSync } from "node:child_process";
 
-const bunVersion = process.versions.bun.split(".").map(parseInt) as [
+const nodeVersion = process.versions.node.split(".").map(parseInt) as [
   number,
   number,
   number,
 ];
 
-if (bunVersion[0] < 1 || bunVersion[1] < 3) {
-  console.error("Unsupported Bun version! Please install Bun 1.3.0+");
+if (nodeVersion[0] < 24 || nodeVersion[1] < 15) {
+  console.error("Unsupported Node version! Please install Node 24.15.0+");
   process.exit(1);
 }
 
 const djsVersionLock = (() => {
-  const proc = Bun.spawnSync(["bun", "pm", "ls"], { stdout: "pipe" });
-  const output = proc.stdout.toString();
-  const match = output.match(new RegExp(`discord\.js@([\\d.]+)`));
+  try {
+    const output = execSync("pnpm ls discord.js", { encoding: "utf-8" });
+    const match = output.match(new RegExp(`discord\.js@([\\d.]+)`));
 
-  return match && match[1] ? match[1] : "unknown";
+    return match && match[1] ? match[1] : "unknown";
+  } catch (e) {
+    return "unknown";
+  }
 })();
 
-// Print out bot and Bun version
+// Print out Bot, Node, and Discord version, as well as the arch.
 console.log(
-  `Starting Modmail ${getPrettyVersion()} on Bun ${process.versions.bun} (${process.arch}) with Discord.js version ${djsVersion} (locked at ${djsVersionLock})`,
+  `Starting Modmail ${getPrettyVersion()} on Node ${process.versions.node} (${process.arch}) with Discord.js version ${djsVersion} (locked at ${djsVersionLock})`,
 );
 
 // Verify node modules have been installed
@@ -42,7 +45,7 @@ try {
   fs.accessSync(path.join(__dirname, "..", "node_modules"));
 } catch (_e) {
   console.error(
-    'Please run "bun install --frozen-lockfile" before starting the bot',
+    'Please run "pnpm install --frozen-lockfile" before starting the bot',
   );
   process.exit(1);
 }
@@ -106,14 +109,14 @@ function errorHandler(err: Error & { code?: string }) {
 process.on("uncaughtException", errorHandler);
 process.on("unhandledRejection", errorHandler);
 
-const packageJson = await Bun.file("./package.json").json();
+const packageJson = JSON.parse(readFileSync("./package.json", "utf-8"));
 const modules = Object.keys(packageJson.dependencies);
 modules.forEach((mod) => {
   try {
     fs.accessSync(path.join(__dirname, "..", "node_modules", mod));
   } catch (_e) {
     console.error(
-      `Please run "bun install --frozen-lockfile" again! Package "${mod}" is missing.`,
+      `Please run "pnpm install --frozen-lockfile" again! Package "${mod}" is missing.`,
     );
     process.exit(1);
   }
@@ -150,8 +153,5 @@ globalThis.fetch = Object.assign(
   start(bot);
 
   // Run the webserver
-  serve({
-    fetch: web.fetch,
-    port: config.web.port,
-  });
+  serve(web);
 })();

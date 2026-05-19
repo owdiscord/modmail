@@ -1,4 +1,3 @@
-import { file } from "bun";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
@@ -8,6 +7,8 @@ import { formatLog } from "./data/logs";
 import { findById } from "./data/threads";
 import { useDb } from "./db";
 import { Thread } from "./web/view";
+import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 
 const app = new Hono();
 
@@ -17,9 +18,9 @@ app.use(cors());
 app.use(secureHeaders());
 
 app.get("/style.css", async (_) => {
-  const attachmentFile = file("./src/web/style.css");
+  const cssFile = await readFile('./src/web/style.css')
 
-  return new Response(attachmentFile, {
+  return new Response(cssFile, {
     headers: {
       "Content-Type": "text/css",
     },
@@ -62,10 +63,9 @@ app.get("/attachments/:id/:filename", async (c) => {
     return c.text("One or more parameters were malformed.");
 
   const attachmentPath = getLocalAttachmentPath(id);
-  const attachmentFile = file(attachmentPath);
-  const exists = await attachmentFile.exists();
+  const attachmentFile = await readFile(attachmentPath);
 
-  if (!exists) return c.notFound();
+  if (!existsSync(attachmentFile)) return c.notFound();
 
   const contentType = getMimeType(filename);
 

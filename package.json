@@ -7,21 +7,24 @@
 	"main": "src/index.js",
 	"type": "module",
 	"scripts": {
-		"start": "bun src/index.js",
-		"dev": "NODE_ENV=development bun src/index.js",
-		"web": "bun --watch src/web.tsx",
-		"watch": "NODE_ENV=development bun --watch src/index.js",
+		"build": "swc ./src -d dist",
+		"prestart": "pnpm run build",
+		"start": "node dist/index.js",
+		"dev": "NODE_ENV=development node src/index.ts",
+		"web": "node --watch src/web.tsx",
+		"watch": "NODE_ENV=development tsx --watch src/index.ts",
 		"lint": "biome check ./src",
 		"lint:fix": "biome check --write --unsafe ./src",
-		"migrate:up": "bun ./src/migrate.ts up",
-		"migrate:new": "bun ./src/migrate.ts new",
-		"migrate:down": "bun ./src/migrate.ts down"
+		"migrate:up": "node ./src/migrate.ts up",
+		"migrate:new": "node ./src/migrate.ts new",
+		"migrate:down": "node ./src/migrate.ts down"
 	},
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/ow2discord/modmail"
+		"url": "https://github.com/owdiscord/modmail"
 	},
 	"dependencies": {
+		"@hono/node-server": "^2.0.2",
 		"ajv": "^8.17.1",
 		"discord-api-types": "^0.37.101",
 		"discord.js": "14.24",
@@ -48,7 +51,8 @@
 		"@types/ini": "^4.1.1",
 		"@types/yargs-parser": "^21.0.3",
 		"jsdoc-to-markdown": "^8.0.3",
-		"json-schema-to-jsdoc": "^1.1.1"
+		"json-schema-to-jsdoc": "^1.1.1",
+		"tsx": "^4.22.1"
 	},
 	"engines": {
 		"node": ">= 24.15.0"

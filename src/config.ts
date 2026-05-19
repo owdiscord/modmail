@@ -1,4 +1,5 @@
 import type { PermissionFlagsBits, Snowflake } from "discord.js";
+import { readFile } from "node:fs/promises";
 import { parse } from "smol-toml";
 
 interface DatabaseConfig {
@@ -145,7 +146,7 @@ const config: ModmailConfig = {
 };
 
 async function loadSecrets() {
-  const raw = parse(await Bun.file("secrets.toml").text());
+  const raw = parse(await readFile("secrets.toml", "utf-8"));
 
   const discord = raw.discord as { token: string };
   if (discord === undefined || discord.token === undefined)
@@ -198,7 +199,7 @@ function deepAssign<T>(target: T, source: Partial<T>): void {
 
 async function loadConfig() {
   const raw = parse(
-    await Bun.file("config.toml").text(),
+    await readFile("config.toml", "utf-8"),
   ) as Partial<ModmailConfig>;
 
   // required fields
