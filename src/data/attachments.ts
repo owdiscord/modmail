@@ -1,10 +1,8 @@
-import { access, unlink } from "node:fs/promises";
+import { access, copyFile, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Attachment, SendableChannels } from "discord.js";
 import { getSelfUrl } from "../utils";
-import { copyFile } from "node:fs/promises";
-import { writeFile } from "node:fs/promises";
 
 async function saveLocalAttachment(attachment: Attachment): Promise<string> {
   const targetPath = getLocalAttachmentPath(attachment.id);

@@ -1,16 +1,16 @@
+import { execSync } from "node:child_process";
 import fs, { readFileSync } from "node:fs";
 import path from "node:path";
+import { serve } from "@hono/node-server";
+import { version as djsVersion } from "discord.js";
 import { BotError } from "./BotError";
 import bot from "./bot";
-import { serve } from "@hono/node-server";
 import { getPrettyVersion } from "./botVersion";
+import logger from "./logger";
 import { start } from "./main";
 import { migrateAllUp } from "./migrate";
 import { PluginInstallationError } from "./PluginInstallationError";
 import web from "./web";
-import logger from "./logger";
-import { version as djsVersion } from "discord.js";
-import { execSync } from "node:child_process";
 
 const nodeVersion = process.versions.node.split(".").map(parseInt) as [
   number,
@@ -26,17 +26,17 @@ if (nodeVersion[0] < 24 || nodeVersion[1] < 15) {
 const djsVersionLock = (() => {
   try {
     const output = execSync("pnpm ls discord.js", { encoding: "utf-8" });
-    const match = output.match(new RegExp(`discord\.js@([\\d.]+)`));
+    const match = output.match(/discord.js@([\d.]+)/);
 
-    return match && match[1] ? match[1] : "unknown";
-  } catch (e) {
+    return match?.[1] ? match[1] : "unknown";
+  } catch (_e) {
     return "unknown";
   }
 })();
 
 // Print out Bot, Node, and Discord version, as well as the arch.
 console.log(
-  `Starting Modmail ${getPrettyVersion()} on Node ${process.versions.node} (${process.arch}) with Discord.js version ${djsVersion} (locked at ${djsVersionLock})`,
+  `Starting Modmail ${await getPrettyVersion()} on Node ${process.versions.node} (${process.arch}) with Discord.js version ${djsVersion} (locked at ${djsVersionLock})`,
 );
 
 // Verify node modules have been installed

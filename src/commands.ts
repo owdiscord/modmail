@@ -1,4 +1,3 @@
-import type { SQL } from "bun";
 import type { Client, Message } from "discord.js";
 import {
   CommandManager,
@@ -8,9 +7,8 @@ import {
 } from "knub-command-manager";
 import config from "./config";
 import type Thread from "./data/Thread";
-import * as threads from "./data/threads";
-import { findOpenThreadByChannelId } from "./data/threads";
-import { useDb } from "./db";
+import * as threads from "./repositories/threads";
+import { useDb, type DbQuery } from "./db";
 import { getUserMention, isStaff, messageIsOnInboxServer } from "./utils";
 import { convertDelayStringToMS } from "./utils/time";
 
@@ -45,7 +43,7 @@ export class Commands {
   public manager: CommandManager<{ msg: Message }>;
   private handlers: HandlerRegistry;
   private aliasMap = new Map<string, Set<string>>();
-  private db: SQL;
+  private db: DbQuery;
   private bot: Client;
 
   constructor(bot: Client) {
@@ -110,14 +108,20 @@ export class Commands {
       if (!handler) return null;
 
       // Thread is guaranteed to exist because of preFilter
-      const thread = await findOpenThreadByChannelId(this.db, msg.channel.id);
+      const thread = await threads.findOpenThreadByChannelId(
+        this.db,
+        msg.channel.id,
+      );
       if (!thread) return null; // Safety check (should never happen)
       await handler(msg, allArgs, thread);
     } else if (context === "inbox") {
       const handler = this.handlers.inbox.get(matchedCommand.id);
       if (!handler) return null;
 
-      const thread = await findOpenThreadByChannelId(this.db, msg.channel.id);
+      const thread = await threads.findOpenThreadByChannelId(
+        this.db,
+        msg.channel.id,
+      );
       await handler(msg, allArgs, thread === null ? undefined : thread);
     } else {
       const handler = this.handlers.global.get(matchedCommand.id);
@@ -186,7 +190,7 @@ export class Commands {
 
           // Check if thread exists
           const thread = (commandConfig.allowSuspended as boolean)
-            ? await threads.findByChannelId(this.db, context.msg.channel.id)
+            ? await threads.findByChannelID(this.db, context.msg.channel.id)
             : await threads.findOpenThreadByChannelId(
                 this.db,
                 context.msg.channel.id,

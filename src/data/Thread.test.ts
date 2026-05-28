@@ -1,8 +1,9 @@
-import { expect, test } from "bun:test";
+import { test } from "node:test";
+import { strict as assert } from "node:assert/strict";
 import { UnicodePeriod } from "../style";
-import { formatUsername } from "./threads";
+import { formatUsernameForChannel } from "./Thread";
 
-test("usernames are formatted correctly", () => {
+test("usernames are formatted for discord channels", () => {
   const values = {
     noryasta: "noryasta",
     "jules.jpg": `jules${UnicodePeriod}jpg`,
@@ -12,6 +13,6 @@ test("usernames are formatted correctly", () => {
   };
 
   for (const [input, expectation] of Object.entries(values)) {
-    expect(formatUsername(input)).toBe(expectation);
+    assert(formatUsernameForChannel(input), expectation);
   }
 });

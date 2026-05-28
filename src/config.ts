@@ -1,5 +1,5 @@
-import type { PermissionFlagsBits, Snowflake } from "discord.js";
 import { readFile } from "node:fs/promises";
+import type { PermissionFlagsBits, Snowflake } from "discord.js";
 import { parse } from "smol-toml";
 
 interface DatabaseConfig {

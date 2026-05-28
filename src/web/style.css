@@ -67,9 +67,7 @@ body {
     gap: 1rem;
     color: var(--color-gray-100);
 
-    &:not([data-message-type="from-user"]):not(
-        [data-message-type="to-user"]
-      ):not([data-message-type="system-to-user"]) {
+    &:not([data-message-type="from-user"]):not([data-message-type="to-user"]):not([data-message-type="system-to-user"]) {
       background: var(--color-gray-900);
     }
   }
@@ -168,7 +166,6 @@ body {
   margin-top: 1ch;
 
   & .server-name {
-    margin: 0;
     font-family: "gg sans Bold", sans-serif;
     font-weight: 700;
     color: #fff;

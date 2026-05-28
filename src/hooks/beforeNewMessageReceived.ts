@@ -39,7 +39,7 @@ export async function callBeforeNewMessageReceivedHooks(
   };
 
   for (const hook of beforeNewMessageReceivedHooks) {
-    logger.debug({ data, hook }, "calling hook")
+    logger.debug({ data, hook }, "calling hook");
     await hook(data);
   }
 

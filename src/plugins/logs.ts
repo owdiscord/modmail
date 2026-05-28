@@ -14,10 +14,10 @@ import { getLogUrl } from "../data/logs";
 import type Thread from "../data/Thread";
 import * as threads from "../data/threads";
 import { getUserThreadsClosedCount } from "../data/threads";
+import logger from "../logger";
 import type { ModuleProps } from "../plugins";
 import { Emoji } from "../style";
 import { getSelfUrl } from "../utils";
-import logger from "../logger";
 
 const LOG_LINES_PER_PAGE = 12;
 
@@ -50,7 +50,7 @@ export default ({ db, commands }: ModuleProps) => {
     if (!user) return;
 
     const channel = await msg.channel.fetch();
-    if (!channel || !channel.isSendable()) return;
+    if (!channel?.isSendable()) return;
 
     const totalUserThreads = await threads.getClosedThreadCountByUserId(
       db,
@@ -105,7 +105,7 @@ export default ({ db, commands }: ModuleProps) => {
 
     const channel = await msg.channel.fetch();
 
-    if (!channel || !channel.isSendable()) return;
+    if (!channel?.isSendable()) return;
 
     const logUrl = await getLogUrl(thread);
     if (logUrl) {
@@ -215,7 +215,7 @@ export default ({ db, commands }: ModuleProps) => {
 
 async function threadInfoCmd(msg: Message, thread: Thread) {
   const channel = await msg.channel.fetch();
-  if (!channel || !channel.isSendable()) return;
+  if (!channel?.isSendable()) return;
 
   const embed = new EmbedBuilder();
   embed.setTitle(`Thread with ${thread.user_name}`);

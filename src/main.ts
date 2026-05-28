@@ -15,16 +15,18 @@ import { type Commands, createCommandManager } from "./commands";
 import config from "./config";
 import * as blocked from "./data/blocked";
 import { ACCIDENTAL_THREAD_MESSAGES } from "./data/constants";
-import * as threads from "./data/threads";
-import { getAllOpenThreads } from "./data/threads";
-import { useDb } from "./db";
+import * as threads from "./repositories/threads";
+import * as threadMessages from "./repositories/threadMessages";
+import { useDb, type DbQuery } from "./db";
+import logger from "./logger";
 import { createPluginProps, loadPlugins } from "./plugins";
 import { handleLogPageChange } from "./plugins/logs";
 import { handleSnippet } from "./plugins/snippets";
-import { messageQueue } from "./queue";
+import { messageQueue, SerialQueue } from "./queue";
 import * as utils from "./utils";
 import { postError } from "./utils";
-import logger from "./logger";
+import Thread, { createNewThreadForUser } from "./data/Thread";
+import type { Logger } from "pino";
 
 const db = useDb();
 
@@ -89,7 +91,7 @@ export async function start(bot: Client) {
       "Plugins loaded, now listening to DMs",
     );
 
-    const openThreads = await getAllOpenThreads(db);
+    const openThreads = await threads.getAllOpenThreads(db);
     for (const thread of openThreads) {
       try {
         await thread.recoverDowntimeMessages();
@@ -260,7 +262,9 @@ async function handleInboxServerMessage(
     (msg.content.startsWith(config.snippetPrefix) ||
       msg.content.startsWith(config.anonSnippetPrefix));
 
-  const thread = await threads.findByChannelId(db, msg.channel.id);
+  const threadRow = await threads.findByChannelID(db, msg.channel.id);
+  if (!threadRow || !threadRow[0]) return null;
+  const thread = new Thread(db, threadRow[0]);
 
   if (isSnippet && thread) {
     await handleSnippet(
@@ -340,7 +344,7 @@ async function handleUserDM(_bot: Client, msg: Message) {
   });
 
   const channel = await msg.channel.fetch();
-  if (!channel || !channel.isSendable()) return;
+  if (!channel?.isSendable()) return;
 
   if (await blocked.isBlocked(msg.author.id)) {
     log.debug({ failed_because: "user is blocked" });
@@ -359,44 +363,7 @@ async function handleUserDM(_bot: Client, msg: Message) {
 
   // Private message handling is queued so e.g. multiple message in quick succession don't result in multiple channels being created
   messageQueue.add(async () => {
-    let thread = await threads.findOpenThreadByUserId(db, msg.author.id);
-    const createNewThread = thread == null;
-    log.debug({ thread }, "adding message to queue");
-
-    // New thread
-    if (createNewThread) {
-      // Ignore messages that shouldn't usually open new threads, such as "ok", "thanks", etc.
-      if (
-        config.ignoreAccidentalThreads &&
-        msg.content &&
-        ACCIDENTAL_THREAD_MESSAGES.includes(msg.content.trim().toLowerCase())
-      )
-        return;
-
-      const newThread = await threads
-        .createNewThreadForUser(db, author, {
-          quiet: false,
-          source: "dm",
-          message: msg,
-        })
-        .catch((e) => {
-          log.error({
-            failed_because: "could not make new thread",
-            err: e,
-          });
-        });
-      if (newThread) {
-        thread = newThread;
-        log.debug({
-          thread: newThread.id,
-          status: "receiving reply in new thread",
-        });
-      } else {
-        log.error({
-          failed_because: "could not make new thread",
-        });
-      }
-    }
+    const thread = findOrCreateThread(db, log, queue, msg);
 
     if (thread) {
       log.debug({
@@ -431,6 +398,36 @@ async function handleUserDM(_bot: Client, msg: Message) {
   });
 }
 
+async function findOrCreateThread(
+  db: DbQuery,
+  log: Logger,
+  queue: SerialQueue,
+  msg: Message,
+): Promise<Thread> {
+  const threadRow = await threads.findOpenThreadByUserID(db, msg.author.id);
+  if (threadRow[0]) return new Thread(db, threadRow[0]);
+
+  const newThread = await createNewThreadForUser(db, queue, msg.author, {
+    quiet: false,
+    source: "dm",
+    message: msg,
+  }).catch((e) => {
+    log.error({
+      failed_because: "could not make new thread",
+      err: e,
+    });
+  });
+
+  log.debug({
+    thread: newThread?.id,
+    status: "receiving reply in new thread",
+  });
+
+  if (newThread) return newThread;
+
+  throw "could not find or create a new thread";
+}
+
 /**
  * Handle message edits
  */
@@ -441,7 +438,7 @@ async function handleMessageEdit(
     Message<boolean> | PartialMessage<boolean>
   > | null,
 ) {
-  if (!msg || !msg.content) return;
+  if (!msg?.content) return;
 
   const threadMessage = await threads.findThreadMessageByDMMessageId(
     db,
@@ -500,7 +497,7 @@ async function handleMessageEdit(
 
   if (threadMessage.isChat()) {
     const message = await msg.fetch();
-    thread.updateChatMessageInLogs(message);
+    threadMessages.updateMessageContent(db, thread.id, msg.id, msg.content);
   }
 }
 
@@ -511,7 +508,7 @@ async function handleMessageDelete(
   _: Client,
   msg: OmitPartialGroupDMChannel<Message<boolean> | PartialMessage<boolean>>,
 ) {
-  const msgThread = await threads.findByChannelId(db, msg.channelId);
+  const msgThread = await threads.findByChannelID(db, msg.channelId);
   if (!msgThread && msg.channel.type !== ChannelType.DM) return;
 
   const threadMessage = await threads.findThreadMessageByDMMessageId(
@@ -545,7 +542,8 @@ async function handleMessageDelete(
   // }
 
   // If the deleted message was staff chatter in the thread channel, also delete it from the logs
-  if (threadMessage.isChat()) thread.deleteChatMessageFromLogs(msg.id);
+  if (threadMessage.isChat())
+    threadMessages.deleteMessage(db, thread.id, msg.id);
 }
 
 async function handleInteractionCreate(bot: Client, interaction: Interaction) {

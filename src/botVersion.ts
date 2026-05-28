@@ -6,7 +6,12 @@ export async function getPrettyVersion() {
   const gitDir = path.resolve(import.meta.dirname, "..", ".git");
 
   async function getPackageVersion() {
-    const packageJson = JSON.parse(await readFile("../package.json", "utf-8"));
+    const packageJson = JSON.parse(
+      await readFile(
+        path.join(import.meta.dirname, "../package.json"),
+        "utf-8",
+      ),
+    );
     return packageJson.version;
   }
 

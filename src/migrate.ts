@@ -1,10 +1,8 @@
-import { readdir } from "node:fs/promises";
-import { useDb } from "./db";
-import { noop } from "./utils";
-import logger from "./logger";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile, writeFile } from "node:fs/promises";
 import type { RowDataPacket } from "mysql2/promise";
-import { writeFile } from "node:fs/promises";
+import { useDb } from "./db";
+import logger from "./logger";
+import { noop } from "./utils";
 
 const db = useDb();
 const migrationTableName = "schema_migrations";

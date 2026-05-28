@@ -2,10 +2,10 @@ import { EmbedBuilder, type Message } from "discord.js";
 import humanizeDuration from "humanize-duration";
 import * as blocked from "../data/blocked";
 import type Thread from "../data/Thread";
+import logger from "../logger";
 import type { ModuleProps } from "../plugins";
 import { Spacing } from "../style";
 import { getLogChannel } from "../utils";
-import logger from "../logger";
 
 export default ({ bot, config, commands }: ModuleProps) => {
   if (!config.allowBlock) return;
@@ -52,7 +52,7 @@ export default ({ bot, config, commands }: ModuleProps) => {
     if (!userIdToBlock || !msg.channel.isSendable()) return;
 
     const channel = await msg.channel.fetch();
-    if (!channel || !channel.isSendable()) return;
+    if (!channel?.isSendable()) return;
 
     const isBlocked = await blocked.isBlocked(userIdToBlock);
     if (isBlocked) {

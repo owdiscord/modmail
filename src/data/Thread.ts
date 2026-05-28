@@ -1,4 +1,3 @@
-import type { SQL } from "bun";
 import {
   type Attachment,
   Collection,
@@ -21,9 +20,12 @@ import {
   type ReplyOptions,
   type SendableChannels,
   type User,
+  TextChannel,
+  ChannelType,
 } from "discord.js";
 import humanizeDuration from "humanize-duration";
 import { v4 } from "uuid";
+import { BotError } from "../BotError.ts";
 import bot from "../bot";
 import config from "../config";
 import { callAfterNewMessageReceivedHooks } from "../hooks/afterNewMessageReceived";
@@ -31,6 +33,7 @@ import { callAfterThreadCloseHooks } from "../hooks/afterThreadClose";
 import { callAfterThreadCloseScheduleCanceledHooks } from "../hooks/afterThreadCloseScheduleCanceled";
 import { callAfterThreadCloseScheduledHooks } from "../hooks/afterThreadCloseScheduled";
 import { callBeforeNewMessageReceivedHooks } from "../hooks/beforeNewMessageReceived";
+import logger from "../logger";
 import {
   Colours,
   Emoji,
@@ -38,12 +41,20 @@ import {
   roleEmoji,
   Spacing,
   sortRoles,
+  UnicodePeriod,
 } from "../style";
 import {
   chunkMessageLines,
   getInboxGuild,
+  getInboxMention,
+  getInboxMentionAllowedMentions,
+  getMainGuilds,
   getSelfUrl,
+  getValidMentionRoles,
+  mentionRolesToAllowedMentions,
+  mentionRolesToMention,
   messageContentIsWithinMaxLength,
+  readMultilineConfigValue,
 } from "../utils";
 import { convertDelayStringToMS } from "../utils/time";
 import { saveAttachment } from "./attachments";
@@ -62,10 +73,16 @@ import {
   getThreadMessageStats,
   getThreadStaffReplyCounts,
   getUserThreadsClosedCount,
-} from "./threads";
+} from "../repositories/threads";
+import * as threadMessages from "../repositories/threadMessages";
+import * as threads from "../repositories/threads";
 import { userGuildStatus } from "./users";
-import logger from "../logger";
-import {BotError} from "../BotError.ts";
+import type { DbQuery } from "../db";
+import type { SerialQueue } from "../queue";
+import {
+  callBeforeNewThreadHooks,
+  type BeforeNewThreadHookResult,
+} from "../hooks/beforeNewThread.ts";
 
 const escapeFormattingRegex = /[_`~*|]/g;
 
@@ -94,7 +111,7 @@ export type ThreadProps = {
 };
 
 export class Thread {
-  private readonly db: SQL;
+  private readonly db: DbQuery;
   public id: string;
   public thread_number: number | null;
   public status: number;
@@ -123,7 +140,7 @@ export class Thread {
   public roles: Array<string> = [];
   public server_join: Date;
 
-  constructor(db: SQL, props: ThreadProps) {
+  constructor(db: DbQuery, props: ThreadProps | threads.ThreadRow) {
     this.db = db;
     this.id = props.id || v4();
     this.thread_number = props.thread_number || null;
@@ -154,15 +171,20 @@ export class Thread {
     this.server_join = props.server_join;
     if (props.roles) this.roles = props.roles;
 
-    logger.debug(Object.fromEntries(
-      Object.entries(this).filter(([_, value]) => typeof value !== 'function')), "thread created")
+    logger.debug(
+      Object.fromEntries(
+        Object.entries(this).filter(
+          ([_, value]) => typeof value !== "function",
+        ),
+      ),
+      "thread created",
+    );
   }
 
   async postToThreadChannel(message: MessageCreateOptions): Promise<Message> {
     try {
       const channel = await bot.channels.fetch(this.channel_id);
-      if (!channel || !channel?.isSendable())
-        throw "cannot send to an unsendable channel";
+      if (!channel?.isSendable()) throw "cannot send to an unsendable channel";
 
       if (message.content && message.content.length > 0) {
         // Text content is included, chunk it and send it as individual messages.
@@ -339,7 +361,7 @@ export class Thread {
       );
     }
 
-    let dmChannel;
+    let dmChannel: DMChannel | null;
     try {
       dmChannel = await user.createDM(true);
     } catch (err: any) {
@@ -738,8 +760,6 @@ export class Thread {
   }
 
   async saveChatMessageToLogs(msg: Message): Promise<void> {
-    // FIXME: Check if we need to save attachments here !!!
-
     const threadMessage = new ThreadMessage({
       thread_id: this.id,
       message_type: ThreadMessageType.Chat,
@@ -775,69 +795,48 @@ export class Thread {
     return await threadMessage.saveToDb(this.db);
   }
 
-  async updateChatMessageInLogs(msg: Message): Promise<void> {
-    await this
-      .db`UPDATE thread_messages SET body = ${msg.content} WHERE thread_id = ${this.id} AND dm_message_id = ${msg.id}`;
-  }
-
-  async deleteChatMessageFromLogs(messageId: string): Promise<void> {
-    await this
-      .db`DELETE FROM thread_messages WHERE thread_id = ${this.id} AND dm_message_id = ${messageId}`;
-  }
-
   async getThreadMessages(): Promise<ThreadMessage[]> {
-    const threadMessages = await this
-      .db`SELECT * FROM thread_messages WHERE thread_id = ${this.id} ORDER BY created_at ASC, id ASC`;
-
-    return threadMessages.map(
-      (row: ThreadMessageProps) => new ThreadMessage(row),
-    );
+    const rows = await threadMessages.getMessagesInThread(this.db, this.id);
+    return rows.map((row) => new ThreadMessage(row as ThreadMessageProps));
   }
 
   async getThreadMessageForMessageId(
     messageId: string,
   ): Promise<ThreadMessage> {
-    const data = await this
-      .db`SELECT * FROM thread_messages WHERE thread_id = ${this.id} AND (dm_message_id = ${messageId} OR inbox_message_id = ${messageId})`;
+    const data = await threadMessages.getThreadMessageBySnowflake(
+      this.db,
+      this.id,
+      messageId,
+    );
 
-    if (data) return new ThreadMessage(data);
+    if (data && data.length > 0)
+      return new ThreadMessage(data[0] as ThreadMessageProps);
 
     throw "[getThreadMessageForMessageId@Thread.ts:804] could not get thread message";
   }
 
-  // TODO: Evaluate if we need this function, or if we can just use getThreadMessageForMessageId
-  // async findThreadMessageByDmMessageId(messageId: string) {
-  //   const data = await this
-  //     .db`SELECT * FROM thread_messages WHERE thread_id = ${this.id} AND dm_message_id = ${messageId}`;
-  //
-  //   if (data && data.length === 1) return new ThreadMessage(data[0]);
-  //
-  //   throw "[findThreadMessageByDmMessageId@Thread.ts:813] could not get thread message";
-  // }
-
   async getLatestThreadMessage(): Promise<ThreadMessage> {
-    const types = [
-      ThreadMessageType.FromUser,
-      ThreadMessageType.ToUser,
-      ThreadMessageType.SystemToUser,
-    ];
-    const data = await this
-      .db`SELECT * FROM thread_messages WHERE thread_id = ${this.id} AND message_type IN ${this.db(types)} ORDER BY created_at DESC, id DESC LIMIT 1`;
+    const data = await threadMessages.getLatestThreadMessages(this.db, this.id);
 
-    if (data && data.length === 1) return new ThreadMessage(data[0]);
+    if (data && data.length === 1)
+      return new ThreadMessage(data[0] as ThreadMessageProps);
 
-    throw "[getLatestThreadMessage@Thread.ts:827] could not get thread message";
+    throw "[getLatestThreadMessage@Thread.ts:827] could not get latest thread message";
   }
 
   async findThreadMessageByMessageNumber(
-    messageNumber: number,
+    message_number: number,
   ): Promise<ThreadMessage> {
-    const data = await this
-      .db`SELECT * FROM thread_messages WHERE thread_id = ${this.id} AND message_number = ${messageNumber} LIMIT 1`;
+    const data = await threadMessages.getThreadMessageByNumber(
+      this.db,
+      this.id,
+      message_number,
+    );
 
-    if (data && data.length === 1) return new ThreadMessage(data[0]);
+    if (data && data.length === 1)
+      return new ThreadMessage(data[0] as ThreadMessageProps);
 
-    throw "[findThreadMessageByMessageNumber@Thread.ts:838] could not get thread message";
+    throw "[findThreadMessageByMessageNumber@Thread.ts:838] could not get thread message by number";
   }
 
   async close(
@@ -860,9 +859,8 @@ export class Thread {
       }
     }
 
-    // Update DB status
-    await this
-      .db`UPDATE threads SET status = ${ThreadStatus.Closed}, closed_by_id = ${closed_by_id}, closed_at = now() WHERE id = ${this.id}`;
+    // Mark thread as closed in the database
+    await threads.closeThread(this.db, this.id, closed_by_id);
 
     // Delete channel
     const channel = await bot.channels.fetch(this.channel_id);
@@ -879,91 +877,64 @@ export class Thread {
     user: User,
     silent: boolean,
   ): Promise<void> {
-    const closed_username = config.useDisplaynames
+    const closer_id = user.id;
+    const closer_name = config.useDisplaynames
       ? user.globalName || user.username
       : user.username;
 
-    const delay_micro = delay_ms * 1000;
-
-    await this
-      .db`UPDATE threads SET scheduled_close_at = DATE_ADD(NOW(), INTERVAL ${delay_micro} MICROSECOND), scheduled_close_id = ${user.id}, scheduled_close_name = ${closed_username}, scheduled_close_silent = ${silent} WHERE id = ${this.id}`;
+    await threads.scheduleThreadClosure(
+      this.db,
+      this.id,
+      delay_ms * 1000, // Times by 1000 to turn seconds to microseconds, as the query wants.
+      closer_id,
+      closer_name,
+      silent,
+    );
 
     await callAfterThreadCloseScheduledHooks({ thread: this });
   }
 
   async cancelScheduledClose(): Promise<void> {
-    const new_data = {
-      scheduled_close_at: null,
-      scheduled_close_id: null,
-      scheduled_close_name: null,
-      scheduled_close_silent: null,
-    };
-    await this
-      .db`UPDATE threads SET ${this.db(new_data)} WHERE id = ${this.id}`;
+    await threads.cancelScheduledClosure(this.db, this.id);
 
     await callAfterThreadCloseScheduleCanceledHooks({ thread: this });
   }
 
   async suspend(): Promise<void> {
-    const new_data = {
-      status: ThreadStatus.Suspended,
-      scheduled_suspend_at: null,
-      scheduled_suspend_id: null,
-      scheduled_suspend_name: null,
-    };
-
-    await this
-      .db`UPDATE threads SET ${this.db(new_data)} WHERE id = ${this.id}`;
+    await threads.suspendThread(this.db, this.id);
   }
 
   async unsuspend(): Promise<void> {
-    await this
-      .db`UPDATE threads SET status = ${ThreadStatus.Open} WHERE id = ${this.id}`;
+    await threads.reOpenThread(this.db, this.id);
   }
 
   async scheduleSuspend(delay_ms: number, user: User): Promise<void> {
+    const suspend_id = user.id;
     const suspend_name = config.useDisplaynames
       ? user.globalName || user.username
       : user.username;
 
     const delay_micro = delay_ms * 1000;
 
-    await this
-      .db`UPDATE threads SET scheduled_suspend_id = ${user.id}, scheduled_suspend_name = ${suspend_name}, scheduled_suspend_at = DATE_ADD(NOW(), INTERVAL ${delay_micro} MICROSECOND) WHERE id = ${this.id}`;
+    await threads.scheduleThreadSuspension(
+      this.db,
+      this.id,
+      delay_micro,
+      suspend_id,
+      suspend_name,
+    );
   }
 
   async cancelScheduledSuspend(): Promise<void> {
-    const new_data = {
-      scheduled_suspend_at: null,
-      scheduled_suspend_id: null,
-      scheduled_suspend_name: null,
-    };
-    await this
-      .db`UPDATE threads SET ${this.db(new_data)} WHERE id = ${this.id}`;
+    await threads.cancelScheduledSuspension(this.db, this.id);
   }
 
-  async addAlert(userId: string): Promise<void> {
-    await this.db`UPDATE threads
-    SET alert_ids = CASE
-      WHEN alert_ids IS NULL THEN ${userId}
-      WHEN LENGTH(alert_ids) = 0 THEN ${userId}
-      WHEN FIND_IN_SET(${userId}, alert_ids) > 0 THEN alert_ids
-      ELSE CONCAT_WS(${","}, alert_ids, ${userId})
-    END
-    WHERE id = ${this.id}`;
+  async addAlert(user_id: string): Promise<void> {
+    await threads.alertUserForThreadReply(this.db, this.id, user_id);
   }
 
-  async removeAlert(userId: string) {
-    await this.db`
-  UPDATE threads
-  SET alert_ids = NULLIF(
-    TRIM(BOTH ',' FROM
-      REPLACE(CONCAT(',', alert_ids, ','), ${`,${userId},`}, ',')
-    ),
-    ''
-  )
-  WHERE id = ${this.id}
-    AND FIND_IN_SET(${userId}, alert_ids) > 0`;
+  async removeAlert(user_id: string) {
+    await threads.removeThreadReplyAlert(this.db, this.id, user_id);
   }
 
   async deleteAlerts(): Promise<void> {
@@ -972,9 +943,7 @@ export class Thread {
       "removing alerts for thread",
     );
 
-    this.db`UPDATE threads SET alert_ids = NULL WHERE id = ${this.id}`.catch(
-      console.error,
-    );
+    threads.clearThreadAlerts(this.db, this.id);
   }
 
   async editStaffReply(
@@ -1045,8 +1014,7 @@ export class Thread {
       await editThreadMessage.saveToDb(this.db);
     }
 
-    await this
-      .db`UPDATE thread_messages SET body = ${newText} WHERE id = ${threadMessage.id}`;
+    await threadMessages.editMessageByID(this.db, threadMessage.id, newText);
     return true;
   }
 
@@ -1086,25 +1054,6 @@ export class Thread {
 
     await threadMessage.deleteFromDb(this.db);
   }
-
-  // TODO: Evaluate whether we still need this function, it is unused.
-  // async updateLogStorageValues(
-  //   storageType: string,
-  //   storageData:
-  //     | {
-  //         fullPath?: string;
-  //         filename: string;
-  //       }
-  //     | string,
-  // ): Promise<void> {
-  //   this.log_storage_type = storageType;
-  //   this.log_storage_data = storageData;
-  //
-  //   await this.db`UPDATE threads SET ${this.db({
-  //     log_storage_type: storageType,
-  //     log_storage_data: JSON.stringify(storageData),
-  //   })} WHERE id = ${this.id}`;
-  // }
 
   isClosed() {
     return this.status === ThreadStatus.Closed;
@@ -1423,7 +1372,7 @@ export class Thread {
       is_anonymous: false,
     }).saveToDb(this.db);
 
-    return !!message
+    return !!message;
   }
 
   public async getCloseEmbed(closer_id: string): Promise<EmbedBuilder | null> {
@@ -1500,4 +1449,272 @@ export class Thread {
   }
 }
 
+// Default export the Thread class
 export default Thread;
+
+export type NewThreadParams = {
+  quiet: boolean;
+  ignoreRequirements?: true;
+  ignoreHooks?: true;
+  message?: Message;
+  categoryId?: string;
+  channelName?: string;
+  source?: string;
+  mentionRole?: string;
+  roles?: Array<string>;
+  server_join?: Date;
+};
+
+export async function createNewThreadForUser(
+  db: DbQuery,
+  queue: SerialQueue,
+  user: User,
+  params: NewThreadParams,
+): Promise<Thread | null> {
+  const fn = async (): Promise<Thread | null> => {
+    const quiet = params.quiet != null ? params.quiet : false;
+    const ignoreRequirements =
+      params.ignoreRequirements != null ? params.ignoreRequirements : false;
+    const ignoreHooks = params.ignoreHooks != null ? params.ignoreHooks : false;
+
+    const existingThread = await threads.findOpenThreadByUserID(db, user.id);
+    if (existingThread) {
+      throw new Error(
+        "Attempted to create a new thread for a user with an existing open thread!",
+      );
+    }
+
+    // If set in config, check that the user's account is old enough (time since they registered on Discord)
+    // If the account is too new, don't start a new thread and optionally reply to them with a message
+    if (config.requirements.accountAge && !ignoreRequirements) {
+      const requiredAge = new Date();
+      requiredAge.setTime(
+        requiredAge.getTime() -
+          config.requirements.accountAge * (60 * 60 * 1000),
+      );
+
+      if (user.createdAt >= requiredAge) {
+        if (config.requirements.accountAgeDeniedMessage) {
+          const accountAgeDeniedMessage =
+            config.requirements.accountAgeDeniedMessage;
+          const privateChannel = user.dmChannel;
+
+          if (privateChannel)
+            await privateChannel.send(accountAgeDeniedMessage);
+        }
+        return null;
+      }
+    }
+
+    // Use the user's name for the thread channel's name
+    // Channel names are particularly picky about what characters they allow, so we gotta do some clean-up
+    const channelName = formatUsernameForChannel(user.username);
+
+    params.channelName = channelName;
+
+    let hookResult: BeforeNewThreadHookResult | undefined;
+    if (!ignoreHooks) {
+      // Call any registered beforeNewThreadHooks
+      hookResult = await callBeforeNewThreadHooks({
+        user,
+        opts: params,
+        message: params.message,
+      });
+      if (hookResult.cancelled) return null;
+    }
+
+    const log = logger.child({
+      event: "creating_thread",
+      user,
+      channelName: params.channelName,
+    });
+
+    // Find which main guilds this user is part of
+    const mainGuilds = getMainGuilds();
+    const userGuildData = new Map<
+      string,
+      { guild: Guild; member: GuildMember }
+    >();
+
+    const serverJoin: Date | null = null;
+
+    for (const guild of mainGuilds) {
+      try {
+        const member = await guild.members.fetch(user.id);
+
+        if (member) userGuildData.set(guild.id, { guild, member });
+      } catch (e: unknown) {
+        // We can safely discard this error, because it just means we couldn't find the member in the guild
+        // Which - for obvious reasons - is completely okay.
+        if ((e as DiscordAPIError).code !== 10007)
+          logger.debug({
+            discord_api_code: (e as DiscordAPIError).code,
+            err: e,
+          });
+      }
+    }
+
+    // If set in config, check that the user has been a member of one of the main guilds long enough
+    // If they haven't, don't start a new thread and optionally reply to them with a message
+    if (config.requirements.timeOnServer && !ignoreRequirements) {
+      // The minimum required time required on the server
+      const timeRequired = new Date();
+      timeRequired.setTime(
+        timeRequired.getTime() - config.requirements.timeOnServer * (60 * 1000),
+      );
+
+      // Check if the user joined any of the main servers a long enough time ago If we don't see
+      // this user on any of the main guilds (the size check below), assume we're just missing some
+      // data and give the user the benefit of the doubt.
+      const isAllowed =
+        userGuildData.size === 0 ||
+        Array.from(userGuildData.values()).some(({ member }) => {
+          return (member.joinedAt || new Date()) < timeRequired;
+        });
+
+      if (!isAllowed) {
+        if (config.requirements.timeOnServerDeniedMessage) {
+          const timeOnServerDeniedMessage = readMultilineConfigValue(
+            config.requirements.timeOnServerDeniedMessage,
+          );
+
+          log.debug("user has not been on server long enough");
+          await user.send(timeOnServerDeniedMessage);
+        }
+
+        return null;
+      }
+    }
+
+    // Figure out which category we should place the thread channel in
+    const parentCategory = (() => {
+      if (hookResult?.categoryId) return hookResult.categoryId;
+
+      if (params.categoryId) return params.categoryId;
+
+      return config.automation.newThreadCategory.reduce(
+        (acc, { server, category }) => {
+          return userGuildData.has(server) ? category : acc;
+        },
+        config.automation.defaultCategory,
+      );
+    })();
+
+    // Attempt to create the inbox channel for this thread
+    let createdChannel: TextChannel | undefined;
+    try {
+      createdChannel = await getInboxGuild().channels.create({
+        name: params.channelName,
+        type: ChannelType.GuildText,
+        parent: parentCategory,
+        reason: "New modmail thread",
+      });
+    } catch (err: unknown) {
+      // Fix for disallowed channel names in servers in Server Discovery
+      if (
+        err instanceof Error &&
+        err.message.includes(
+          "Contains words not allowed for servers in Server Discovery",
+        )
+      ) {
+        const replacedChannelName = "badname";
+        createdChannel =
+          (await getInboxGuild()
+            .channels.create({
+              name: replacedChannelName,
+              type: ChannelType.GuildText,
+              reason: "New Modmail thread",
+              parent: parentCategory,
+            })
+            .catch((e) => {
+              log.error({ msg: "can't create channel", err: e });
+            })) || undefined;
+      }
+
+      if (!createdChannel?.id) {
+        log.error({ msg: "can't create channel", err });
+        throw err;
+      }
+    }
+
+    // Save the new thread in the database
+    const newThreadId = await threads.create(db, {
+      status: ThreadStatus.Open,
+      user_id: user.id,
+      user_name: user.username,
+      channel_id: createdChannel.id,
+      next_message_number: 1,
+      created_at: new Date(),
+      thread_number: 0,
+      alert_ids: "",
+      log_storage_type: "local",
+      log_storage_data: {},
+      metadata: "{}",
+      roles:
+        userGuildData
+          .get(config.overwatchGuildId)
+          ?.member.roles.cache.map((r) => r.name) || [],
+      server_join: serverJoin || new Date(),
+    });
+
+    const newThreadRow = await threads
+      .findThreadByID(db, newThreadId)
+      .catch((err) => {
+        log.error({ message: "could not find latest created thread", err });
+      });
+    if (!newThreadRow || newThreadRow.length === 0) {
+      log.error({ message: "could not find latest created thread" });
+      return null;
+    }
+
+    // We already check this above and know it can't be undefined, hence the type coercion.
+    const newThread = new Thread(db, newThreadRow[0] as ThreadProps);
+
+    if (!quiet) {
+      // Ping moderators of the new thread
+      const staffMention = params.mentionRole
+        ? mentionRolesToMention(getValidMentionRoles(params.mentionRole))
+        : getInboxMention();
+
+      if (staffMention.trim() !== "") {
+        const allowedMentions: MessageMentionOptions = params.mentionRole
+          ? mentionRolesToAllowedMentions(
+              getValidMentionRoles(params.mentionRole),
+            )
+          : getInboxMentionAllowedMentions();
+
+        await newThread.postNonLogMessage({
+          content: staffMention,
+          allowedMentions,
+        });
+      }
+    }
+
+    await newThread.sendInfoHeader(user, userGuildData);
+
+    return newThread;
+  };
+
+  return queue.enqueue(fn);
+}
+
+/*
+ * Utils
+ **/
+
+// Format usernames for use as channel names. Removes all non-alphanumeric characters,
+// replaces full-stops with a special character we spoof, and replaces spaces with hyphens.
+export function formatUsernameForChannel(inputName: string): string {
+  let channelName = String(inputName)
+    .normalize("NFKD") // split accented characters into their base characters and diacritical marks
+    .replace(/[\u0300-\u036f]/g, "") // remove all the accents, which happen to be all in the \u03xx UNICODE block.
+    .replace(/\./g, UnicodePeriod) // Replace fullstops with a unicode character that is supported in channel names
+    .trim() // trim leading or trailing whitespace
+    .toLowerCase() // convert to lowercase
+    .replace(/[^a-z0-9 _․]/g, "") // remove non-alphanumeric characters
+    .replace(/\s+/g, "_"); // replace spaces with hyphens
+
+  if (channelName === "") channelName = "unknown";
+
+  return channelName;
+}

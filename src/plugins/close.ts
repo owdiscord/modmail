@@ -1,4 +1,7 @@
+import { Collection } from "discord.js";
+import * as snippets from "../data/snippets";
 import { getThreadsThatShouldBeClosed } from "../data/threads";
+import logger from "../logger";
 import type { ModuleProps } from "../plugins";
 import {
   getLogChannel,
@@ -6,9 +9,6 @@ import {
   readMultilineConfigValue,
 } from "../utils";
 import { getDelayFromArgs } from "../utils/time";
-import * as snippets from "../data/snippets";
-import { Collection } from "discord.js";
-import logger from "../logger";
 
 export default ({ config, commands, db }: ModuleProps) => {
   // Check for threads that are scheduled to be closed and close them

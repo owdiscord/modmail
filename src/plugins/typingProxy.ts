@@ -1,7 +1,8 @@
 import { ChannelType, Events, GuildChannel } from "discord.js";
-import { findByChannelId, findOpenThreadByUserId } from "../data/threads";
+import * as threads from "../repositories/threads";
 import type { ModuleProps } from "../plugins";
 import { noop } from "../utils";
+import Thread from "../data/Thread";
 
 export default ({ bot, db, config }: ModuleProps) => {
   if (config.typingProxyToInbox || config.typingProxyToUser) {
@@ -10,9 +11,10 @@ export default ({ bot, db, config }: ModuleProps) => {
 
       // config.typingProxy: forward user typing in a DM to the modmail thread
       if (config.typingProxyToInbox && !(channel instanceof GuildChannel)) {
-        const thread = await findOpenThreadByUserId(db, user.id);
-        if (!thread) return;
+        const threadRow = await threads.findOpenThreadByUserID(db, user.id);
+        if (!threadRow || !threadRow[0]) return;
 
+        const thread = new Thread(db, threadRow[0]);
         const threadChannel = await bot.channels.fetch(thread.channel_id);
 
         if (threadChannel?.isSendable())
@@ -26,8 +28,10 @@ export default ({ bot, db, config }: ModuleProps) => {
         channel.type === ChannelType.GuildText &&
         !user.bot
       ) {
-        const thread = await findByChannelId(db, channel.id);
-        if (!thread) return;
+        const threadRow = await threads.findByChannelID(db, channel.id);
+        if (!threadRow || !threadRow[0]) return;
+
+        const thread = new Thread(db, threadRow[0]);
 
         const dmChannel = await thread.getDMChannel();
         if (!dmChannel) return;

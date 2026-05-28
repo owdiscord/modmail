@@ -112,7 +112,7 @@ export default ({ config, commands }: ModuleProps) => {
   // Get default display role
   commands.addInboxServerCommand("role", [], async (msg, _args, _thread) => {
     const channel = await msg.channel.fetch();
-    if (!msg.member || !channel || !channel.isSendable()) return;
+    if (!msg.member || !channel?.isSendable()) return;
 
     const displayRole = await getModeratorDefaultDisplayRoleName(msg.member);
     if (displayRole) {
@@ -128,7 +128,7 @@ export default ({ config, commands }: ModuleProps) => {
     [],
     async (msg, _args, _thread) => {
       const channel = await msg.channel.fetch();
-      if (!msg.member || !channel || !channel.isSendable()) return;
+      if (!msg.member || !channel?.isSendable()) return;
 
       await resetModeratorDefaultRoleOverride(msg.member.id);
 
@@ -155,7 +155,7 @@ export default ({ config, commands }: ModuleProps) => {
     async (msg: Message, args: Record<string, unknown>, _thread?: Thread) => {
       const channel = await msg.channel.fetch();
       const role = await resolveRoleInput(args.role as string);
-      if (!role || !msg.member || !channel || !channel.isSendable()) return;
+      if (!role || !msg.member || !channel?.isSendable()) return;
 
       const hasRole = msg.member?.roles.resolve(role.id);
 
