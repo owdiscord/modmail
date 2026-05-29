@@ -1,4 +1,4 @@
-import type { SQL } from "bun";
+import type { DbQuery } from "./db";
 import type { Client } from "discord.js";
 import type { Commands } from "./commands";
 import type { ModmailConfig } from "./config";
@@ -33,7 +33,7 @@ export type ModuleProps = {
   bot: Client;
   config: ModmailConfig;
   commands: Commands;
-  db: SQL;
+  db: DbQuery;
   attachments: {
     downloadAttachment: typeof downloadAttachment;
     saveAttachment: typeof saveAttachment;
@@ -87,7 +87,7 @@ export function createPluginProps({
   commands,
 }: {
   bot: Client;
-  db: SQL;
+  db: DbQuery;
   config: ModmailConfig;
   commands: Commands;
 }): ModuleProps {

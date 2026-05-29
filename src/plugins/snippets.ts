@@ -2,7 +2,7 @@ import { Collection, type Message } from "discord.js";
 import { parseArguments } from "knub-command-manager";
 import type { ModmailConfig } from "../config";
 import type { Snippet } from "../data/Snippet";
-import * as snippets from "../data/snippets";
+import * as snippets from "../repositories/snippets";
 import type Thread from "../data/Thread";
 import type { ModuleProps } from "../plugins";
 import { disableCodeBlocks, postSystemMessageWithFallback } from "../utils";

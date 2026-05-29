@@ -1,4 +1,4 @@
-import type { SQL } from "bun";
+import type { DbQuery } from "../db";
 import type { Client, MessageCreateOptions } from "discord.js";
 import config from "../config";
 import { disableCodeBlocks, disableInlineCode, getTimestamp } from "../utils";
@@ -90,15 +90,15 @@ export class ThreadMessage {
     return new ThreadMessage(this);
   }
 
-  async deleteFromDb(db: SQL) {
+  async deleteFromDb(db: DbQuery) {
     return await db`DELETE FROM thread_messages WHERE id = ${this.id}`;
   }
 
-  async updateInDb(db: SQL, data: Partial<ThreadMessage>) {
+  async updateInDb(db: DbQuery, data: Partial<ThreadMessage>) {
     return await db`UPDATE thread_messages SET ${db(data)} WHERE id = ${this.id}`;
   }
 
-  async saveToDb(db: SQL) {
+  async saveToDb(db: DbQuery) {
     const messageData = {
       thread_id: this.thread_id,
       user_id: this.user_id,

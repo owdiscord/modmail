@@ -1,5 +1,5 @@
 import { Collection } from "discord.js";
-import * as snippets from "../data/snippets";
+import * as snippets from "../repositories/snippets";
 import { getThreadsThatShouldBeClosed } from "../data/threads";
 import logger from "../logger";
 import type { ModuleProps } from "../plugins";

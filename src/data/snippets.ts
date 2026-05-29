@@ -1,5 +1,5 @@
 import { useDb } from "../db";
-import { Snippet } from "./Snippet";
+import { Snippet } from "../data/Snippet";
 
 const db = useDb();
 

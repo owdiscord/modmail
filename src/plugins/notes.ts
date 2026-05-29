@@ -4,7 +4,7 @@ import {
   deleteNote,
   findNote,
   findNotesByUserId,
-} from "../data/notes";
+} from "../repositories/notes";
 import type { ModuleProps } from "../plugins";
 import {
   chunkMessageLines,
@@ -13,12 +13,12 @@ import {
   START_CODEBLOCK,
 } from "../utils";
 
-export default ({ config, commands }: ModuleProps) => {
+export default ({ config, commands, db }: ModuleProps) => {
   if (!config.allowNotes) return;
 
   async function userNotesCmd(msg: Message, userId: string) {
     if (!msg.channel.isSendable()) return;
-    const userNotes = await findNotesByUserId(userId);
+    const userNotes = await findNotesByUserId(db, userId);
     if (!userNotes.length) {
       msg.channel.send({
         content: `There are no notes for <@!${userId}>`,
@@ -60,7 +60,7 @@ export default ({ config, commands }: ModuleProps) => {
 
     const authorId = msg.author.id;
 
-    await createUserNote(userId, authorId, body);
+    await createUserNote(db, userId, authorId, body);
 
     await msg.channel.send({
       content: `Note added for <@!${userId}>`,
@@ -87,13 +87,13 @@ export default ({ config, commands }: ModuleProps) => {
   async function deleteUserNoteCmd(msg: Message, noteId: string) {
     if (!msg.channel.isSendable()) return;
 
-    const note = await findNote(noteId);
+    const note = await findNote(db, noteId);
     if (!note) {
       postError(msg.channel, "Note not found!");
       return;
     }
 
-    await deleteNote(noteId);
+    await deleteNote(db, noteId);
     await msg.channel.send(
       `Deleted note on <@!${note.user_id}>:\n${START_CODEBLOCK}${escapeMarkdown(note.body)}${END_CODEBLOCK}`,
     );

@@ -65,7 +65,7 @@ import { getLogUrl } from "./logs";
 import { findNotesByUserId } from "./notes";
 import { getRegisteredUsername, getStaffUsername } from "./Registration";
 import type { Snippet } from "./Snippet";
-import { all } from "./snippets";
+import { all } from "../repositories/snippets.ts";
 import ThreadMessage, { type ThreadMessageProps } from "./ThreadMessage";
 import {
   getLastClosedThreadByUser,
