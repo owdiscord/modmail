@@ -1,0 +1,90 @@
+@import 'tailwindcss';
+
+@import url("https://fonts.cdnfonts.com/css/gg-sans-2");
+
+@theme {
+  --color-gray-1000: #25262a;
+  --color-gray-950: #2c2d32;
+  --color-gray-900: #323339;
+  --color-gray-800: #3e3f45;
+  --color-gray-750: #494950;
+  --color-gray-400: #84858b;
+  --color-ow-orange: #f06414;
+  --color-closed: #ed4447;
+
+  --color-ow-mod: #fe701d;
+  --color-ow-helper: #ffe135;
+  --color-ow-admin: #4781ff;
+
+  --color-green-bg: #2f403e;
+  --color-green-fg: #62b77c;
+
+  /* --color-gray-950: #161619; */
+  /* --color-gray-900: #1b1b1f; */
+  /* --color-gray-800: #2e3136; */
+  /* --color-gray-400: #84858b; */
+  /* --color-ow-orange: #f06414; */
+}
+
+body {
+  background: var(--color-gray-950);
+  color: var(--color-gray-100);
+  font-family: 'Outfit', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+}
+
+.page-sidebar {
+  & .sidebar-logo {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--spacing) * 3);
+    padding: 0 calc(var(--spacing) * 5);
+    border-bottom: var(--color-gray-900) 1px solid;
+    height: calc(var(--spacing) * 20);
+    font-weight: bold;
+
+    & svg:first-child {
+      color: var(--color-ow-orange);
+      width: calc(var(--spacing) * 10);
+      height: calc(var(--spacing) * 10);
+    }
+  }
+
+  & ul {
+    padding: calc(var(--spacing) * 2) calc(var(--spacing) * 3);
+    display: grid;
+    gap: calc(var(--spacing) * 1.5);
+  }
+
+  & li {
+    position: relative;
+  }
+
+  & li>a {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--spacing) * 2.5);
+    border-radius: var(--radius-lg);
+    padding: calc(var(--spacing) * 2) calc(var(--spacing) * 3);
+    transition-property: color, background-color;
+    transition-duration: var(--default-transition-duration);
+    transition-timing-function: var(--default-transition-timing-function);
+
+    & svg {
+      color: var(--color-gray-400);
+      width: calc(var(--spacing) * 5);
+      height: calc(var(--spacing) * 5);
+      transition-property: color;
+      transition-duration: var(--default-transition-duration);
+      transition-timing-function: var(--default-transition-timing-function);
+    }
+  }
+
+  & li.active>a {
+    background: var(--color-gray-800);
+    color: var(--color-white);
+
+    & svg {
+      color: var(--color-ow-orange);
+    }
+  }
+}
