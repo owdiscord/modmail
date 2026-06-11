@@ -21,6 +21,7 @@ import {
   type ReplyOptions,
   type SendableChannels,
   type User,
+  GuildChannel,
 } from "discord.js";
 import humanizeDuration from "humanize-duration";
 import { v4 } from "uuid";
@@ -65,7 +66,7 @@ import {
 } from "./threads";
 import { userGuildStatus } from "./users";
 import logger from "../logger";
-import {BotError} from "../BotError.ts";
+import { BotError } from "../BotError.ts";
 
 const escapeFormattingRegex = /[_`~*|]/g;
 
@@ -154,8 +155,14 @@ export class Thread {
     this.server_join = props.server_join;
     if (props.roles) this.roles = props.roles;
 
-    logger.debug(Object.fromEntries(
-      Object.entries(this).filter(([_, value]) => typeof value !== 'function')), "thread created")
+    logger.debug(
+      Object.fromEntries(
+        Object.entries(this).filter(
+          ([_, value]) => typeof value !== "function",
+        ),
+      ),
+      "thread created",
+    );
   }
 
   async postToThreadChannel(message: MessageCreateOptions): Promise<Message> {
@@ -254,15 +261,24 @@ export class Thread {
   ): Promise<boolean> {
     if (!moderator) return false;
 
+    const inbox = await bot.channels.fetch(this.channel_id);
+    if (!(inbox instanceof GuildChannel)) return false;
+
+    const parent = await inbox.parent?.fetch();
+    if (!parent) return false;
+
+    const isApps = parent.name.toLowerCase().includes("mod app");
+
+    isAnonymous = isApps || isAnonymous;
+
     const moderatorName = (await getStaffUsername(moderator)).replace(
       escapeFormattingRegex,
       "\\$&",
     );
 
-    const roleName = await getModeratorThreadDisplayRoleName(
-      moderator,
-      this.id,
-    );
+    const roleName = isApps
+      ? "Interviewer"
+      : await getModeratorThreadDisplayRoleName(moderator, this.id);
 
     const userMessageReference: ReplyOptions = {
       messageReference: "",
@@ -1423,7 +1439,7 @@ export class Thread {
       is_anonymous: false,
     }).saveToDb(this.db);
 
-    return !!message
+    return !!message;
   }
 
   public async getCloseEmbed(closer_id: string): Promise<EmbedBuilder | null> {
