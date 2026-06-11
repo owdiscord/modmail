@@ -1,8 +1,8 @@
 import {
   createPool,
-  type ResultSetHeader,
-  type PoolConnection,
   type Pool,
+  type PoolConnection,
+  type ResultSetHeader,
   type RowDataPacket,
 } from "mysql2/promise";
 import config from "./config";

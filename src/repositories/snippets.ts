@@ -18,7 +18,7 @@ export async function get(
   const snippet =
     await sql<SnippetRow>`SELECT * FROM snippets WHERE LOWER(\`trigger\`) = ${trigger.toLowerCase()} LIMIT 1`;
 
-  return snippet && snippet[0] ? snippet[0] : null;
+  return snippet?.[0] ? snippet[0] : null;
 }
 
 // Insert a new snippet to the database. Fail if it already exists.

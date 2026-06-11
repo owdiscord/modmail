@@ -1,11 +1,11 @@
 import { escapeMarkdown, type Message } from "discord.js";
+import type { ModuleProps } from "../plugins";
 import {
   createUserNote,
   deleteNote,
   findNote,
   findNotesByUserId,
 } from "../repositories/notes";
-import type { ModuleProps } from "../plugins";
 import {
   chunkMessageLines,
   END_CODEBLOCK,

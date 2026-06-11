@@ -1,8 +1,8 @@
 import type { GuildMember } from "discord.js";
-import config from "../config";
-import { useDb, type DbQuery } from "../db";
 import type { RowDataPacket } from "mysql2";
 import { createCache } from "../cache";
+import config from "../config";
+import { type DbQuery, useDb } from "../db";
 
 export interface Registration {
   discord_id: string;
@@ -35,7 +35,7 @@ export async function getUserRegistrationByDiscord(
   const registration =
     await db<RegistrationRow>`SELECT * FROM registered_users WHERE discord_id = ${discord_id}`;
 
-  return registration && registration[0] ? registration[0] : null;
+  return registration?.[0] ? registration[0] : null;
 }
 
 export async function getUserRegistrationName(
@@ -45,9 +45,7 @@ export async function getUserRegistrationName(
   const registration =
     await db<RegistrationRow>`SELECT registered_name FROM registered_users WHERE discord_id = ${discord_id}`;
 
-  return registration && registration[0]
-    ? registration[0].registered_name
-    : null;
+  return registration?.[0] ? registration[0].registered_name : null;
 }
 
 export async function deleteUserRegistration(db: DbQuery, discord_id: string) {

@@ -1,90 +1,38 @@
 import {
-  type Attachment,
-  Collection,
-  DiscordAPIError,
-  type DMChannel,
-  EmbedBuilder,
-  type EmbedField,
-  escapeMarkdown,
+  ChannelType,
+  type DiscordAPIError,
   type Guild,
   type GuildMember,
-  type HexColorString,
   type Message,
-  MessageActivityType,
-  type MessageCreateOptions,
   type MessageMentionOptions,
-  type MessageReference,
-  MessageReferenceType,
-  type MessageResolvable,
-  type MessageSnapshot,
-  type ReplyOptions,
-  type SendableChannels,
+  type TextChannel,
   type User,
-  TextChannel,
-  ChannelType,
 } from "discord.js";
-import humanizeDuration from "humanize-duration";
 import { v4 } from "uuid";
-import { BotError } from "../BotError.ts";
-import bot from "../bot";
 import config from "../config";
-import { callAfterNewMessageReceivedHooks } from "../hooks/afterNewMessageReceived";
-import { callAfterThreadCloseHooks } from "../hooks/afterThreadClose";
-import { callAfterThreadCloseScheduleCanceledHooks } from "../hooks/afterThreadCloseScheduleCanceled";
-import { callAfterThreadCloseScheduledHooks } from "../hooks/afterThreadCloseScheduled";
-import { callBeforeNewMessageReceivedHooks } from "../hooks/beforeNewMessageReceived";
+import type { DbQuery } from "../db";
+import {
+  type BeforeNewThreadHookResult,
+  callBeforeNewThreadHooks,
+} from "../hooks/beforeNewThread";
 import logger from "../logger";
+import type { SerialQueue } from "../queue";
+import * as threads from "../repositories/threads";
+import { UnicodePeriod } from "../style";
+import { sendInfoHeader } from "../thread.ts";
 import {
-  Colours,
-  Emoji,
-  localRole,
-  roleEmoji,
-  Spacing,
-  sortRoles,
-  UnicodePeriod,
-} from "../style";
-import {
-  chunkMessageLines,
   getInboxGuild,
   getInboxMention,
   getInboxMentionAllowedMentions,
   getMainGuilds,
-  getSelfUrl,
   getValidMentionRoles,
   mentionRolesToAllowedMentions,
   mentionRolesToMention,
-  messageContentIsWithinMaxLength,
   readMultilineConfigValue,
 } from "../utils";
-import { convertDelayStringToMS } from "../utils/time";
-import { saveAttachment } from "./attachments";
-import { isBlocked } from "./blocked";
-import { ThreadMessageType, ThreadStatus } from "./constants";
-import { getModeratorThreadDisplayRoleName } from "./displayRoles";
-import { getLogUrl } from "./logs";
-import { findNotesByUserId } from "./notes";
-import { getRegisteredUsername, getStaffUsername } from "./Registration";
-import type { Snippet } from "./Snippet";
-import { all } from "../repositories/snippets.ts";
-import ThreadMessage, { type ThreadMessageProps } from "./ThreadMessage";
-import {
-  getLastClosedThreadByUser,
-  getNextThreadMessageNumber,
-  getThreadMessageStats,
-  getThreadStaffReplyCounts,
-  getUserThreadsClosedCount,
-} from "../repositories/threads";
-import * as threadMessages from "../repositories/threadMessages";
-import * as threads from "../repositories/threads";
-import { userGuildStatus } from "./users";
-import type { DbQuery } from "../db";
-import type { SerialQueue } from "../queue";
-import {
-  callBeforeNewThreadHooks,
-  type BeforeNewThreadHookResult,
-} from "../hooks/beforeNewThread.ts";
+import { ThreadStatus } from "./constants";
 
-const escapeFormattingRegex = /[_`~*|]/g;
+const _escapeFormattingRegex = /[_`~*|]/g;
 
 export type ThreadProps = {
   id: string;
@@ -111,7 +59,6 @@ export type ThreadProps = {
 };
 
 export class Thread {
-  private readonly db: DbQuery;
   public id: string;
   public thread_number: number | null;
   public status: number;
@@ -136,7 +83,6 @@ export class Thread {
     | string;
   public created_at: Date;
   public metadata: Record<string, unknown>;
-  private _autoAlertTimeout: ReturnType<typeof setTimeout> | null = null;
   public roles: Array<string> = [];
   public server_join: Date;
 
@@ -181,1272 +127,1272 @@ export class Thread {
     );
   }
 
-  async postToThreadChannel(message: MessageCreateOptions): Promise<Message> {
-    try {
-      const channel = await bot.channels.fetch(this.channel_id);
-      if (!channel?.isSendable()) throw "cannot send to an unsendable channel";
-
-      if (message.content && message.content.length > 0) {
-        // Text content is included, chunk it and send it as individual messages.
-        // Files (attachments) are only sent with the last message.
-        const chunks = chunkMessageLines(message.content);
-        for (const [i, chunk] of chunks.entries()) {
-          // Only send embeds, files, etc. with the last message
-          if (i === chunks.length - 1) {
-            return await channel.send({ ...message, content: chunk });
-          }
-
-          // Send a regular chunk, no need to return here.
-          await channel.send({ content: chunk });
-        }
-      } else {
-        // No text content, we are safe to assume it can be sent
-        // as one message, likely only containing a file or similar.
-        return await channel.send(message);
-      }
-    } catch (err: unknown) {
-      if (err instanceof DiscordAPIError) {
-        // Channel not found
-        if (err.code === 10003) {
-          logger.info(
-            {
-              thread_id: this.id,
-              username: this.user_name,
-              user_id: this.user_id,
-            },
-            `thread channel no longer exists, auto closing without sending message.`,
-          );
-          await this.close("system", true);
-        }
-
-        if (err.code === 240000) {
-          logger.info(
-            {
-              thread_id: this.id,
-              channel_id: this.channel_id,
-              username: this.user_name,
-              user_id: this.user_id,
-            },
-            `cannot send message to thread, the message contains a link blocked by the harmful links filter.`,
-          );
-
-          await (
-            (await bot.channels.fetch(this.channel_id)) as SendableChannels
-          ).send(
-            "Failed to send message to thread channel because the message contains a link blocked by the harmful links filter",
-          );
-        }
-      } else {
-        throw err;
-      }
-    }
-
-    logger.error(
-      {
-        thread_id: this.id,
-        channel_id: this.channel_id,
-        username: this.user_name,
-        user_id: this.user_id,
-        message,
-      },
-      "cannot post to thread channel",
-    );
-
-    throw "something truly wild has happened";
-  }
-
-  async _startAutoAlertTimer(modId: string): Promise<void> {
-    if (this._autoAlertTimeout) clearTimeout(this._autoAlertTimeout);
-
-    const autoAlertDelay =
-      convertDelayStringToMS(config.autoAlertDelay) || 120 * 1000;
-
-    this._autoAlertTimeout = setTimeout(() => {
-      if (this.status !== ThreadStatus.Open) return;
-      this.addAlert(modId);
-    }, autoAlertDelay);
-  }
-
-  async replyToUser(
-    moderator: GuildMember | null,
-    text: string,
-    replyAttachments: Collection<string, Attachment> = new Collection(),
-    isAnonymous: boolean = false,
-    messageReference: MessageReference | null = null,
-  ): Promise<boolean> {
-    if (!moderator) return false;
-
-    const moderatorName = (await getStaffUsername(moderator)).replace(
-      escapeFormattingRegex,
-      "\\$&",
-    );
-
-    const roleName = await getModeratorThreadDisplayRoleName(
-      moderator,
-      this.id,
-    );
-
-    const userMessageReference: ReplyOptions = {
-      messageReference: "",
-      failIfNotExists: true,
-    };
-
-    // Handle replies
-    if (config.relayInlineReplies && messageReference) {
-      const repliedTo = await this.getThreadMessageForMessageId(
-        messageReference.messageId || "",
-      );
-      if (repliedTo) {
-        userMessageReference.messageReference = repliedTo.dm_message_id;
-      }
-    }
-
-    if (config.allowSnippets && config.allowInlineSnippets) {
-      // Replace {{snippet}} with the corresponding snippet
-      // The beginning and end of the variable - {{ and }} - can be changed with the config options
-      // config.inlineSnippetStart and config.inlineSnippetEnd
-      const allSnippets = await all();
-
-      const unknownSnippets = new Set();
-      text = text.replace(
-        new RegExp(
-          `${config.inlineSnippetStart}(\\s*\\S+?\\s*)${config.inlineSnippetEnd}`,
-          "ig",
-        ),
-        (orig, trigger) => {
-          const snippet = allSnippets.find(
-            (snippet: Snippet) =>
-              snippet.trigger.toLowerCase === trigger.toLowerCase().trim(),
-          );
-          if (snippet == null) {
-            unknownSnippets.add(trigger);
-          }
-
-          return snippet != null ? snippet.body : orig;
-        },
-      );
-
-      if (config.errorOnUnknownInlineSnippet && unknownSnippets.size > 0) {
-        await this.postSystemMessage(
-          `The following snippets used in the reply do not exist:\n${Array.from(unknownSnippets).join(", ")}`,
-        );
-        return false;
-      }
-    }
-
-    // Prepare attachments, if any
-    const files: Array<Attachment> = [];
-    const attachmentLinks: Array<string> = [];
-
-    if (replyAttachments.size > 0) {
-      for (const [_, attachment] of replyAttachments) {
-        const result = await saveAttachment(attachment);
-
-        if (result) {
-          attachment.url = result;
-          files.push(attachment);
-          attachmentLinks.push(result);
-        }
-      }
-    }
-
-    // Re-fetch the user to avoid using a stale/partial cached User object,
-    // which can cause Discord to reject createDM() with 50035 CHANNEL_RECIPIENT_REQUIRED.
-    let user;
-    try {
-      user = await bot.users.fetch(this.user_id, { force: true });
-    } catch (err) {
-      throw new BotError(
-        `Could not fetch user ${this.user_id} to open a DM: ${(err as Error).message}`,
-      );
-    }
-
-    let dmChannel: DMChannel | null;
-    try {
-      dmChannel = await user.createDM(true);
-    } catch (err: any) {
-      // 50035 CHANNEL_RECIPIENT_REQUIRED -- Discord refuses to open a DM with this user
-      // (their account is deleted, disabled, not sharing a guild with the bot, or transient backend issue).
-      if (err?.code === 50035) {
-        throw new BotError(
-          `Unable to open a DM channel with <@${user.id}>. ` +
-            `The account may be deleted/disabled or not share a server with the bot.`,
-        );
-      }
-      throw err;
-    }
-
-    const threadMessage = new ThreadMessage({
-      thread_id: this.id,
-      message_type: ThreadMessageType.ToUser,
-      message_number: await getNextThreadMessageNumber(this.db, this.id),
-      user_id: moderator.id,
-      dm_channel_id: dmChannel.id,
-      user_name: moderatorName,
-      body: text,
-      is_anonymous: isAnonymous,
-      role_name: roleName,
-      attachments: attachmentLinks,
-    });
-
-    const dmContent = threadMessage.formatAsStaffReplyDM();
-
-    if (userMessageReference) {
-      dmContent.reply = userMessageReference;
-      // dmContent.allowedMentions = userMessageReference;
-    }
-
-    const inboxContent = threadMessage.formatAsStaffReplyThreadMessage();
-
-    if (messageReference) {
-      inboxContent.reply = {
-        messageReference: messageReference.messageId || "",
-        failIfNotExists: false,
-      };
-    }
-
-    // Because moderator replies have to be editable, we enforce them to fit within 1 message
-    if (
-      !messageContentIsWithinMaxLength(dmContent.content?.toString() || "") ||
-      !messageContentIsWithinMaxLength(inboxContent.content?.toString() || "")
-    ) {
-      //      await threadMessage.delete();
-      //    FIXME: Cant delete
-      await this.postSystemMessage(
-        "Reply is too long! Make sure your reply is under 2000 characters total, moderator name in the reply included.",
-      );
-      return false;
-    }
-
-    const dmMessage = await user.send(dmContent).catch(async (err) => {
-      await threadMessage.deleteFromDb(this.db);
-      await this.postSystemMessage(
-        `Error while replying to user: ${err.message}`,
-      );
-    });
-
-    if (!dmMessage) return false;
-
-    threadMessage.dm_message_id = dmMessage.id;
-
-    // Show the reply in the inbox thread
-    const inboxMessage = await this.postToThreadChannel({
-      ...inboxContent,
-      files,
-    });
-
-    if (inboxMessage) {
-      threadMessage.inbox_message_id = inboxMessage.id;
-    }
-
-    await threadMessage.saveToDb(this.db);
-
-    // Interrupt scheduled closing, if in progress
-    if (this.scheduled_close_at) {
-      await this.cancelScheduledClose();
-      await this.postSystemMessage(
-        "Cancelling scheduled closing of this thread due to new reply",
-      );
-    }
-
-    // If enabled, set up a reply alert for the moderator after a slight delay
-    if (config.autoAlert) {
-      await this._startAutoAlertTimer(moderator.id);
-    }
-
-    return true;
-  }
-
-  async receiveUserReply(msg: Message, skipAlert = false): Promise<void> {
-    const user = await bot.users.fetch(msg.author.id);
-    const opts = {
-      thread: this,
-      message: msg,
-      quiet: true,
-    };
-
-    // Call any registered beforeNewMessageReceivedHooks
-    const hookResult = await callBeforeNewMessageReceivedHooks({
-      user,
-      opts,
-      message: opts.message,
-      cancel: () => void {},
-    });
-    if (hookResult.cancelled) return;
-
-    let messageContent = msg.content || "";
-
-    let allMessageAttachments = msg.attachments;
-    if (msg.messageSnapshots.size > 0) {
-      allMessageAttachments = allMessageAttachments.concat(
-        (msg.messageSnapshots.first() as MessageSnapshot).attachments,
-      );
-    }
-
-    const attachmentUrls: Array<string> = [];
-    // const files: Array<AttachmentBuilder> = [];
-
-    for (const attachment of allMessageAttachments.values()) {
-      const savedAttachment = await saveAttachment(attachment);
-
-      if (savedAttachment) {
-        attachmentUrls.push(savedAttachment);
-        // files.push(
-        //   new AttachmentBuilder(savedAttachment, {
-        //     name: attachment.name,
-        //   }),
-        // );
-      }
-    }
-
-    const embeds = msg.embeds;
-
-    // Handle forwards
-    if (msg.reference && msg.reference.type === MessageReferenceType.Forward) {
-      const forward = msg.messageSnapshots.first();
-      if (!forward) return;
-
-      for (const embed of forward.embeds) {
-        embeds.push(embed);
-      }
-
-      let textContent = forward.content;
-      if (forward.stickers.size > 0) {
-        textContent += forward.stickers
-          .map((sticker) => `Sticker **[${sticker.name}](${sticker.url})**`)
-          .join("\n");
-      }
-
-      if (textContent.length === 0)
-        textContent = "Message contains only embeds";
-      messageContent = `\n\n> -# *↪ Forwarded from ${forward.guild?.name || "direct messages"}*\n> ${textContent}\n> -# ${forward.url}  •  <t:${Math.round(forward.createdTimestamp / 1000)}:f>`;
-    }
-
-    // Handle replies
-    let messageReply: MessageResolvable = "";
-    if (
-      config.relayInlineReplies &&
-      msg.reference &&
-      msg.reference.type === MessageReferenceType.Default &&
-      msg.reference.messageId
-    ) {
-      const repliedTo = await this.getThreadMessageForMessageId(
-        msg.reference.messageId,
-      );
-
-      if (repliedTo) {
-        messageReply = repliedTo.inbox_message_id;
-      }
-    }
-    if (msg.activity) {
-      let applicationName = "Unknown Application";
-
-      if (
-        !applicationName &&
-        msg.activity.partyId &&
-        msg.activity.partyId.startsWith("spotify:")
-      ) {
-        applicationName = "Spotify";
-      }
-
-      const activityText = ((): string => {
-        if (
-          msg.activity.type === MessageActivityType.Join ||
-          msg.activity.type === MessageActivityType.JoinRequest
-        ) {
-          return "join a game";
-        } else if (msg.activity.type === MessageActivityType.Spectate) {
-          return "spectate";
-        } else if (msg.activity.type === MessageActivityType.Listen) {
-          return "listen along";
-        }
-
-        return "do something";
-      })();
-
-      messageContent += `\n\n*<This message contains an invite to ${activityText} on ${applicationName}>*`;
-      messageContent = messageContent.trim();
-    }
-
-    if (msg.stickers) {
-      const stickerLines = msg.stickers.map(
-        (sticker) =>
-          `*Sent sticker "[${sticker.name}](https://media.discordapp.net/stickers/${sticker.id}.webp?size=160)":*`,
-      );
-
-      messageContent += `\n\n${stickerLines.join("\n")}`;
-    }
-
-    messageContent = messageContent.trim();
-    if (msg.reference && msg.reference.type === MessageReferenceType.Forward)
-      messageContent = `\n${messageContent}`;
-
-    // Save DB entry
-    const threadMessage = new ThreadMessage({
-      inbox_message_id: "",
-      thread_id: this.id,
-      message_type: ThreadMessageType.FromUser,
-      user_id: this.user_id,
-      user_name: config.useDisplaynames
-        ? msg.author.globalName || msg.author.username
-        : msg.author.username,
-      body: messageContent,
-      is_anonymous: false,
-      dm_message_id: msg.id,
-      dm_channel_id: msg.channel.id,
-      attachments: attachmentUrls,
-      // small_attachments: smallAttachmentLinks,
-      metadata: {
-        embeds,
-      },
-    });
-
-    // Show the user reply in the inbox thread
-    const inboxContent = threadMessage.formatAsUserReply();
-
-    if (messageReply) {
-      inboxContent.reply = {
-        messageReference: messageReply,
-        failIfNotExists: false,
-      };
-    }
-
-    // Send message reply
-    const inboxMessage = await this.postToThreadChannel({
-      ...inboxContent,
-      // files,
-      embeds,
-    });
-
-    // If we successfully delivered the message, this will include the message ID, which we need to save the ThreadMessage.
-    if (inboxMessage) threadMessage.inbox_message_id = inboxMessage.id;
-
-    await threadMessage.saveToDb(this.db);
-
-    // Call any registered afterNewMessageReceivedHooks
-    await callAfterNewMessageReceivedHooks({
-      user,
-      opts,
-      message: opts.message,
-    });
-
-    // Interrupt scheduled closing, if in progress
-    if (this.scheduled_close_at && this.scheduled_close_id) {
-      await this.cancelScheduledClose();
-      await this.postSystemMessage(
-        `<@!${this.scheduled_close_id}> Thread that was scheduled to be closed got a new reply. Cancelling.`,
-        {
-          allowedMentions: {
-            users: [this.scheduled_close_id],
-          },
-        },
-      );
-    }
-
-    if (this.alert_ids && !skipAlert) {
-      const ids = this.alert_ids.split(",");
-      const mentionsStr = ids.map((id) => `<@!${id}> `).join("");
-
-      await this.deleteAlerts();
-      await this.postSystemMessage(
-        `${Emoji.Alert} ${mentionsStr} New message from ${this.user_name}`,
-        {
-          allowedMentions: {
-            users: ids,
-          },
-        },
-      );
-    }
-  }
-
-  async postSystemMessage(
-    message: string | MessageCreateOptions,
-    opts: {
-      allowedMentions?: MessageMentionOptions;
-      messageReference?: MessageReference;
-      emptyContent?: boolean;
-    } = {},
-  ): Promise<{
-    message: Message;
-    threadMessage: ThreadMessage;
-  }> {
-    message = typeof message === "string" ? { content: message } : message;
-
-    const threadMessage = new ThreadMessage({
-      thread_id: this.id,
-      message_type: ThreadMessageType.System,
-      user_id: undefined,
-      user_name: "",
-      body: opts.emptyContent ? "" : message.content,
-      is_anonymous: false,
-    });
-
-    const { content } = threadMessage.formatAsSystem();
-
-    message.content = opts.emptyContent ? "" : content;
-
-    message.allowedMentions = opts.allowedMentions;
-    if (opts.messageReference) {
-      message.reply = {
-        messageReference: opts.messageReference.messageId || "",
-      };
-    }
-
-    const msg = await this.postToThreadChannel(message);
-
-    threadMessage.inbox_message_id = msg.id;
-    const finalThreadMessage = await threadMessage.saveToDb(this.db);
-
-    return {
-      message: msg,
-      threadMessage: finalThreadMessage,
-    };
-  }
-
-  async addSystemMessageToLogs(text: string): Promise<ThreadMessage> {
-    const threadMessage = new ThreadMessage({
-      thread_id: this.id,
-      message_type: ThreadMessageType.System,
-      user_name: "",
-      body: text,
-      is_anonymous: false,
-    });
-
-    return await threadMessage.saveToDb(this.db);
-  }
-
-  async sendSystemMessageToUser(
-    text: string,
-    opts: {
-      postToThreadChannel?: boolean;
-      allowedMentions?: MessageMentionOptions;
-    } = {},
-  ): Promise<void> {
-    const user = await bot.users.fetch(this.user_id);
-    if (!user) throw `user (${this.user_id}) could not be retrieved`;
-
-    const threadMessage = new ThreadMessage({
-      thread_id: this.id,
-      message_type: ThreadMessageType.SystemToUser,
-      user_name: "",
-      body: text,
-      is_anonymous: false,
-    });
-
-    const dmMessage = await user
-      .send(threadMessage.formatAsSystemToUserDM())
-      .catch((e) => {
-        throw `could not send a dm to the user: ${e}`;
-      });
-
-    if (opts.postToThreadChannel !== false) {
-      const inboxMessage = threadMessage.formatAsSystemToUserThreadMessage(bot);
-      inboxMessage.allowedMentions = opts.allowedMentions;
-
-      const inboxMsg = await this.postToThreadChannel(inboxMessage);
-      threadMessage.inbox_message_id = inboxMsg.id;
-    }
-
-    threadMessage.dm_channel_id = dmMessage.channelId;
-    threadMessage.dm_message_id = dmMessage.id;
-
-    await threadMessage.saveToDb(this.db);
-  }
-
-  async postNonLogMessage(
-    message: MessageCreateOptions,
-  ): Promise<Message | null> {
-    return this.postToThreadChannel(message);
-  }
-
-  async saveChatMessageToLogs(msg: Message): Promise<void> {
-    const threadMessage = new ThreadMessage({
-      thread_id: this.id,
-      message_type: ThreadMessageType.Chat,
-      user_id: msg.author.id,
-      user_name: config.useDisplaynames
-        ? msg.author.globalName || msg.author.username
-        : msg.author.username,
-      body: msg.content,
-      metadata: {
-        attachments: msg.attachments,
-      },
-      is_anonymous: false,
-      dm_message_id: msg.id,
-    });
-
-    return await threadMessage.saveToDb(this.db);
-  }
-
-  async saveCommandMessageToLogs(msg: Message) {
-    const threadMessage = new ThreadMessage({
-      thread_id: this.id,
-      message_type: ThreadMessageType.Command,
-      user_id: msg.author.id,
-      user_name: config.useDisplaynames
-        ? msg.author.globalName || msg.author.username
-        : msg.author.username,
-      body: msg.content,
-      dm_message_id: msg.id,
-      created_at: new Date(),
-      is_anonymous: false,
-    });
-
-    return await threadMessage.saveToDb(this.db);
-  }
-
-  async getThreadMessages(): Promise<ThreadMessage[]> {
-    const rows = await threadMessages.getMessagesInThread(this.db, this.id);
-    return rows.map((row) => new ThreadMessage(row as ThreadMessageProps));
-  }
-
-  async getThreadMessageForMessageId(
-    messageId: string,
-  ): Promise<ThreadMessage> {
-    const data = await threadMessages.getThreadMessageBySnowflake(
-      this.db,
-      this.id,
-      messageId,
-    );
-
-    if (data && data.length > 0)
-      return new ThreadMessage(data[0] as ThreadMessageProps);
-
-    throw "[getThreadMessageForMessageId@Thread.ts:804] could not get thread message";
-  }
-
-  async getLatestThreadMessage(): Promise<ThreadMessage> {
-    const data = await threadMessages.getLatestThreadMessages(this.db, this.id);
-
-    if (data && data.length === 1)
-      return new ThreadMessage(data[0] as ThreadMessageProps);
-
-    throw "[getLatestThreadMessage@Thread.ts:827] could not get latest thread message";
-  }
-
-  async findThreadMessageByMessageNumber(
-    message_number: number,
-  ): Promise<ThreadMessage> {
-    const data = await threadMessages.getThreadMessageByNumber(
-      this.db,
-      this.id,
-      message_number,
-    );
-
-    if (data && data.length === 1)
-      return new ThreadMessage(data[0] as ThreadMessageProps);
-
-    throw "[findThreadMessageByMessageNumber@Thread.ts:838] could not get thread message by number";
-  }
-
-  async close(
-    closed_by_id: string,
-    suppressSystemMessage = false,
-    silent = false,
-  ): Promise<void> {
-    const log = logger.child({
-      msg: `Closing thread ${this.id}`,
-      user_id: this.user_id,
-      username: this.user_name,
-      silent,
-    });
-
-    if (!suppressSystemMessage) {
-      if (silent) {
-        await this.postSystemMessage("Closing thread silently...");
-      } else {
-        await this.postSystemMessage("Closing thread...");
-      }
-    }
-
-    // Mark thread as closed in the database
-    await threads.closeThread(this.db, this.id, closed_by_id);
-
-    // Delete channel
-    const channel = await bot.channels.fetch(this.channel_id);
-    if (channel) {
-      log.info({ channel: this.channel_id });
-      await channel.delete("Thread closed");
-    }
-
-    await callAfterThreadCloseHooks({ threadId: this.id });
-  }
-
-  async scheduleClose(
-    delay_ms: number,
-    user: User,
-    silent: boolean,
-  ): Promise<void> {
-    const closer_id = user.id;
-    const closer_name = config.useDisplaynames
-      ? user.globalName || user.username
-      : user.username;
-
-    await threads.scheduleThreadClosure(
-      this.db,
-      this.id,
-      delay_ms * 1000, // Times by 1000 to turn seconds to microseconds, as the query wants.
-      closer_id,
-      closer_name,
-      silent,
-    );
-
-    await callAfterThreadCloseScheduledHooks({ thread: this });
-  }
-
-  async cancelScheduledClose(): Promise<void> {
-    await threads.cancelScheduledClosure(this.db, this.id);
-
-    await callAfterThreadCloseScheduleCanceledHooks({ thread: this });
-  }
-
-  async suspend(): Promise<void> {
-    await threads.suspendThread(this.db, this.id);
-  }
-
-  async unsuspend(): Promise<void> {
-    await threads.reOpenThread(this.db, this.id);
-  }
-
-  async scheduleSuspend(delay_ms: number, user: User): Promise<void> {
-    const suspend_id = user.id;
-    const suspend_name = config.useDisplaynames
-      ? user.globalName || user.username
-      : user.username;
-
-    const delay_micro = delay_ms * 1000;
-
-    await threads.scheduleThreadSuspension(
-      this.db,
-      this.id,
-      delay_micro,
-      suspend_id,
-      suspend_name,
-    );
-  }
-
-  async cancelScheduledSuspend(): Promise<void> {
-    await threads.cancelScheduledSuspension(this.db, this.id);
-  }
-
-  async addAlert(user_id: string): Promise<void> {
-    await threads.alertUserForThreadReply(this.db, this.id, user_id);
-  }
-
-  async removeAlert(user_id: string) {
-    await threads.removeThreadReplyAlert(this.db, this.id, user_id);
-  }
-
-  async deleteAlerts(): Promise<void> {
-    logger.info(
-      { thread_id: this.id, username: this.user_name },
-      "removing alerts for thread",
-    );
-
-    threads.clearThreadAlerts(this.db, this.id);
-  }
-
-  async editStaffReply(
-    threadMessage: ThreadMessage,
-    newText: string,
-    quiet = true,
-  ): Promise<boolean> {
-    const newThreadMessage = new ThreadMessage({
-      ...threadMessage,
-      body: newText,
-    });
-
-    const formattedThreadMessage =
-      newThreadMessage.formatAsStaffReplyThreadMessage();
-    const formattedDM = newThreadMessage.formatAsStaffReplyDM();
-
-    // Same restriction as in replies. Because edits could theoretically change the number of messages a reply takes, we enforce replies
-    // to fit within 1 message to avoid the headache and issues caused by that.
-    if (
-      !messageContentIsWithinMaxLength(formattedDM) ||
-      !messageContentIsWithinMaxLength(formattedThreadMessage)
-    ) {
-      await this.postSystemMessage(
-        "Edited reply is too long! Make sure the edit is under 2000 characters total, moderator name in the reply included.",
-      );
-      return false;
-    }
-
-    const { dm_channel_id, dm_message_id, inbox_message_id } = threadMessage;
-
-    // Edit the DM (user side) message
-    const threadChannel = await bot.channels.fetch(dm_channel_id);
-
-    if (threadChannel?.isSendable()) {
-      const message = await threadChannel.messages.fetch(dm_message_id);
-      message.edit({
-        content: formattedDM.content,
-      });
-    }
-
-    // Edit the inbox (mod side) message
-    const inboxChannel = await bot.channels.fetch(this.channel_id);
-    if (inboxChannel?.isSendable()) {
-      const message = await inboxChannel.messages.fetch(inbox_message_id);
-      message.edit({
-        content: formattedThreadMessage.content,
-      });
-    }
-
-    if (!quiet) {
-      const editThreadMessage = new ThreadMessage({
-        thread_id: this.id,
-        message_type: ThreadMessageType.ReplyEdited,
-        user_name: "",
-        body: "",
-        is_anonymous: false,
-        metadata: {
-          originalThreadMessage: threadMessage,
-          newBody: newText,
-        },
-      });
-
-      const threadNotification = editThreadMessage.formatAsStaffReplyEdit();
-      if (!threadNotification) return false;
-
-      const inboxMessage = await this.postToThreadChannel(threadNotification);
-      editThreadMessage.inbox_message_id = inboxMessage.id;
-      await editThreadMessage.saveToDb(this.db);
-    }
-
-    await threadMessages.editMessageByID(this.db, threadMessage.id, newText);
-    return true;
-  }
-
-  async deleteStaffReply(
-    threadMessage: ThreadMessage,
-    quiet = false,
-  ): Promise<void> {
-    const dmChannel = await bot.channels.fetch(threadMessage.dm_channel_id);
-    if (dmChannel?.isSendable())
-      dmChannel.messages.delete(threadMessage.dm_message_id);
-
-    const inboxChannel = await bot.channels.fetch(this.channel_id);
-    if (inboxChannel?.isSendable())
-      inboxChannel.messages.delete(threadMessage.inbox_message_id);
-
-    if (!quiet) {
-      const deletionThreadMessage = new ThreadMessage({
-        thread_id: this.id,
-        message_type: ThreadMessageType.ReplyDeleted,
-        user_name: "",
-        body: "",
-        is_anonymous: false,
-      });
-
-      deletionThreadMessage.metadata.originalThreadMessage = threadMessage;
-
-      const threadNotification =
-        deletionThreadMessage.formatAsStaffReplyDeletion();
-
-      if (!threadNotification) return;
-
-      const inboxMessage = await this.postToThreadChannel(threadNotification);
-      deletionThreadMessage.inbox_message_id = inboxMessage.id;
-
-      await deletionThreadMessage.saveToDb(this.db);
-    }
-
-    await threadMessage.deleteFromDb(this.db);
-  }
-
-  isClosed() {
-    return this.status === ThreadStatus.Closed;
-  }
-
-  async recoverDowntimeMessages() {
-    if (await isBlocked(this.user_id)) return;
-
-    const user = await bot.users.fetch(this.user_id);
-    const dmChannel = await user.createDM();
-    if (!dmChannel) return;
-
-    const lastMessageId = (await this.getLatestThreadMessage()).dm_message_id;
-
-    const messages = await dmChannel.messages.fetch({
-      limit: 50,
-      after: lastMessageId,
-    });
-
-    if (!messages || messages.size === 0) return;
-
-    const filtered = messages
-      .values()
-      .toArray()
-      .filter((msg) => msg.author.id === this.user_id); // Make sure we're not recovering bot or system messages
-
-    if (filtered.length === 0) return;
-
-    await this.postSystemMessage(
-      `📥 Recovering ${filtered.length} message${filtered.length === 1 ? "" : "s"} sent by user during bot downtime!`,
-    );
-
-    let isFirst = true;
-    for (const msg of filtered.reverse()) {
-      await this.receiveUserReply(msg, !isFirst);
-      isFirst = false;
-    }
-  }
-
-  public async getDMChannel(): Promise<DMChannel> {
-    try {
-      const user = await bot.users.fetch(this.user_id);
-      return await user.createDM();
-    } catch (err) {
-      logger.error({ thread_id: this.id, user_id: this.user_id, err });
-      throw err;
-    }
-  }
-
-  public async getThreadChannel(): Promise<SendableChannels> {
-    try {
-      const channel = await bot.channels.fetch(this.channel_id);
-
-      if (channel?.isSendable()) return channel;
-
-      throw "it was impossible to retrieve the thread channel";
-    } catch (err) {
-      logger.error({ thread_id: this.id, user_id: this.user_id, err });
-      throw err;
-    }
-  }
-
-  public async sendInfoHeader(
-    user: User,
-    userGuildData: Map<string, { guild: Guild; member: GuildMember }>,
-  ): Promise<boolean> {
-    const embed = new EmbedBuilder();
-    if (user.avatarURL !== null) embed.setThumbnail(user.avatarURL());
-
-    const infoHeaderItems = [];
-
-    // Account age
-    const diff = Date.now() - user.createdAt.getTime();
-    const accountAge = humanizeDuration(diff, {
-      largest: 2,
-      round: true,
-    });
-    infoHeaderItems.push(`ACCOUNT AGE **${accountAge}**`);
-
-    const guildStatus = await userGuildStatus(bot, user);
-
-    const join = (() => {
-      if (guildStatus.ban && !guildStatus.main) {
-        const time = Math.round(
-          (guildStatus.ban.joinedTimestamp || Date.now()) / 1000,
-        );
-        return `${Emoji.Appeals} <t:${time}:d>`;
-      }
-
-      if (guildStatus.main) {
-        const time = Math.round(
-          (guildStatus.main.joinedTimestamp || Date.now()) / 1000,
-        );
-        return `${Emoji.Overwatch} <t:${time}:d>`;
-      }
-
-      return "Unknown";
-    })();
-
-    const fields: Array<EmbedField> = [
-      {
-        name: "Joined",
-        value: `${Emoji.Discord} <t:${Math.round(user.createdAt.getTime() / 1000)}:d>${Spacing.Doublespace}**•**${Spacing.Doublespace}${join}`,
-        inline: true,
-      },
-      {
-        name: "User ID",
-        value: `\`${user.id}\``,
-        inline: true,
-      },
-    ];
-
-    const separator = (len: number = 16) => "".padStart(Math.min(len, 28), "⎽");
-
-    // Grab roles, pronouns, and mute status from the main server (if they are in it!)
-    let muteStatus = false;
-    if (guildStatus.main) {
-      let pronouns: Array<string> = [];
-      const roles: Array<string> = [];
-      // Real main server - not ban appeals.
-      for (const role of guildStatus.main.roles.cache.values()) {
-        if (role.name.includes("She/Her")) pronouns.push("she/her");
-        else if (role.name.includes("He/Him")) pronouns.push("he/him");
-        else if (role.name.includes("They/Them")) pronouns.push("they/them");
-        else if (role.name.includes("Any Pronouns")) pronouns.push("any");
-        else if (role.name.includes("Muted")) muteStatus = true;
-
-        const modmailRole = localRole(role.name);
-        if (modmailRole) roles.push(modmailRole);
-      }
-
-      let sortedRoles = sortRoles(roles);
-
-      // Exclude "Regular" only if a regular role colour is included
-      const regularColours = new Set()
-        .add("Guillard Purple")
-        .add("Vishkar Blue")
-        .add("Kamori Teal")
-        .add("Oladele Green")
-        .add("Helix Yellow");
-      if (sortedRoles.some((el) => regularColours.has(el))) {
-        sortedRoles = sortedRoles.filter((role) => role !== "Regular");
-      }
-
-      const rolesForDisplay = sortedRoles
-        .map((r) =>
-          [
-            "Guillard Purple",
-            "Vishkar Blue",
-            "Kamori Teal",
-            "Oladele Green",
-            "Helix Yellow",
-          ].includes(r)
-            ? "Regular"
-            : r,
-        )
-        .join(", ");
-
-      // If they have Any Pronouns, default to only showing any.
-      if (pronouns.includes("any")) pronouns = ["any"];
-
-      fields.push({
-        name: `${escapeMarkdown(guildStatus.main.nickname || guildStatus.main.user.username)}${pronouns.length > 0 ? `  •  (${pronouns.join("/")})` : ""}`,
-        value:
-          rolesForDisplay.length > 0
-            ? `${roleEmoji(roles[0] || "")}${Spacing.DraysPrecious}${rolesForDisplay}`
-            : "",
-        inline: false,
-      });
-
-      if (guildStatus?.main?.voice?.channelId && !muteStatus) {
-        const channelName = guildStatus?.main?.voice.channel?.name || "unknown";
-
-        const lastField = fields.at(-1);
-        if (lastField)
-          lastField.value += `\n-# ${separator((guildStatus?.main?.voice?.channel?.name?.length || 10) * 2)}`;
-
-        fields.push({
-          name: `In Voice Channel`,
-          value: `<#${guildStatus.main.voice.channelId}> (${channelName})`,
-          inline: false,
-        });
-      }
-    }
-
-    // User id (and mention, if enabled)
-    infoHeaderItems.push(`ID **${user.id}** (<@!${user.id}>)`);
-
-    let infoHeader = infoHeaderItems.join(", ");
-    const userBanned = guildStatus.ban !== null && guildStatus.main === null;
-
-    // Guild member info
-    for (const [_guildId, guildData] of userGuildData.entries()) {
-      const nickname =
-        guildData.member.nickname || config.useDisplaynames
-          ? guildData.member.user.globalName
-          : guildData.member.user.username;
-
-      const headerItems = [
-        {
-          name: "Display Name",
-          value: escapeMarkdown(nickname || guildData.member.user.username),
-        },
-      ];
-
-      if (guildData.member.voice.channelId && !muteStatus) {
-        const voiceChannel =
-          guildData.member?.voice?.channel?.name || "unknown";
-
-        headerItems.push({
-          name: "Voice Channel",
-          value: escapeMarkdown(voiceChannel),
-        });
-      }
-
-      const member = await guildData.member.fetch();
-      if (member.roles.cache.size > 0) {
-        headerItems.push({
-          name: "Roles",
-          value: guildData.member.roles.cache
-            .filter((c) => c.name !== "@everyone")
-            .map((r) => r.name)
-            .join(", "),
-        });
-      }
-
-      const headerStr = headerItems
-        .map((h) => `${h.name.toUpperCase()} ${h.value}`)
-        .join(", ");
-
-      infoHeader += `\n**[${escapeMarkdown(guildData.guild.name)}]** ${headerStr}`;
-    }
-
-    const userLogCount = await getUserThreadsClosedCount(
-      this.db,
-      this.user_id,
-      this.created_at,
-    );
-
-    embed.setTitle(`Thread #${userLogCount + 1} with ${user.username}`);
-
-    if (userLogCount > 0) {
-      infoHeader += `\n\nThis user has **${userLogCount}** previous modmail threads. Use \`${config.prefix}logs\` to see them.`;
-    }
-
-    const userNotes = await findNotesByUserId(user.id);
-    if (userNotes.length) {
-      infoHeader += `\n\nThis user has **${userNotes.length}** notes. Use \`${config.prefix}notes\` to see them.`;
-    }
-
-    if (userLogCount > 0) {
-      const mostRecentThread = await getLastClosedThreadByUser(
-        this.db,
-        user.id,
-      );
-
-      if (mostRecentThread) {
-        mostRecentThread.log_storage_type = "local";
-        const mostRecentLog = await getLogUrl(mostRecentThread);
-
-        embed.setDescription(
-          `${userLogCount} previous thread${userLogCount === 1 ? `` : "s"} [(view last)](${mostRecentLog})`,
-        );
-      }
-    } else {
-      embed.setDescription("No previous threads");
-    }
-
-    if (muteStatus) {
-      embed.setColor(Colours.MuteRed as HexColorString);
-      const lastField = fields.at(-1);
-      if (lastField) lastField.value += `\n-# ${separator(20)}`;
-
-      fields.push({
-        name: `${Emoji.Muted} **User is currently muted**\n`,
-        value: "",
-        inline: false,
-      });
-    }
-
-    if (userBanned) {
-      embed.setColor(Colours.BanRed as HexColorString);
-
-      fields.push(
-        {
-          name: `${user.displayName}`,
-          value: `\n-# ${separator(20)}`,
-          inline: false,
-        },
-        {
-          name: `${Emoji.Banned} **User is currently banned**\n`,
-          value: "",
-          inline: false,
-        },
-      );
-    }
-
-    embed.setFields(fields);
-    infoHeader += "\n────────────────";
-
-    const message = await (await this.getThreadChannel()).send({
-      content: "",
-      embeds: [embed],
-    });
-
-    await new ThreadMessage({
-      thread_id: this.id,
-      message_type: ThreadMessageType.System,
-      user_id: undefined,
-      user_name: "",
-      body: infoHeader,
-      metadata: {
-        embeds: [embed],
-      },
-      inbox_message_id: message.id,
-      is_anonymous: false,
-    }).saveToDb(this.db);
-
-    return !!message;
-  }
-
-  public async getCloseEmbed(closer_id: string): Promise<EmbedBuilder | null> {
-    const user = await bot.users.fetch(this.user_id);
-    if (!user) return null;
-
-    const author =
-      getInboxGuild().members.cache.get(closer_id) ||
-      (await getInboxGuild().members.fetch(closer_id));
-    if (!author) return null;
-
-    const msgStats = await getThreadMessageStats(this.db, this.id);
-    if (!msgStats) return null;
-
-    const staffReplyData = await getThreadStaffReplyCounts(this.db, this.id);
-    let staffReplies: Array<string> = [];
-    if (staffReplyData)
-      staffReplies = await Promise.all(
-        staffReplyData.map(async (reply) => {
-          const registeredName = await getRegisteredUsername(
-            this.db,
-            reply.user_id,
-          );
-          const username = await (async () => {
-            if (!registeredName)
-              return (await bot.users.fetch(reply.user_id)).username;
-
-            return registeredName;
-          })();
-
-          return `${username} (${reply.msg_count})`;
-        }),
-      );
-
-    const embed = new EmbedBuilder();
-    const threadNumber = await getUserThreadsClosedCount(
-      this.db,
-      user.id,
-      this.created_at,
-    );
-    embed.setTitle(`Thread #${threadNumber} with ${user.username} closed`);
-    const roleEmoji = (() => {
-      const roleNames = author.roles.cache.map((r) => r.name.toLowerCase());
-      if (roleNames.includes("admin")) return Emoji.Roles.Admin;
-
-      if (roleNames.includes("trainee")) return Emoji.Roles.Trainee;
-
-      return Emoji.Roles.Moderator;
-    })();
-
-    embed.setDescription(
-      `-# \`${user.id}\`${Spacing.Doublespace}•${Spacing.Doublespace}Closed by ${roleEmoji} ${(await getRegisteredUsername(this.db, author.id)) || author.user.username}${Spacing.Doublespace}•${Spacing.Doublespace}[(View log)](${await this.logUrl()})\n`,
-    );
-    embed.setColor(Colours.BanRed as HexColorString);
-
-    embed.addFields([
-      {
-        name: "Total Messages",
-        value: `-# **${msgStats.received}** User, **${msgStats.replies}** Replies, **${msgStats.internal}** Internal`,
-        inline: true,
-      },
-      {
-        name: `Participants`,
-        value: `-# ${staffReplies.length > 0 ? staffReplies.join(", ") : "None"}`,
-        inline: true,
-      },
-    ]);
-
-    return embed;
-  }
-
-  public async logUrl(): Promise<string> {
-    return await getSelfUrl(`logs/${this.id}`);
-  }
+  // async postToThreadChannel(message: MessageCreateOptions): Promise<Message> {
+  //   try {
+  //     const channel = await bot.channels.fetch(this.channel_id);
+  //     if (!channel?.isSendable()) throw "cannot send to an unsendable channel";
+  //
+  //     if (message.content && message.content.length > 0) {
+  //       // Text content is included, chunk it and send it as individual messages.
+  //       // Files (attachments) are only sent with the last message.
+  //       const chunks = chunkMessageLines(message.content);
+  //       for (const [i, chunk] of chunks.entries()) {
+  //         // Only send embeds, files, etc. with the last message
+  //         if (i === chunks.length - 1) {
+  //           return await channel.send({ ...message, content: chunk });
+  //         }
+  //
+  //         // Send a regular chunk, no need to return here.
+  //         await channel.send({ content: chunk });
+  //       }
+  //     } else {
+  //       // No text content, we are safe to assume it can be sent
+  //       // as one message, likely only containing a file or similar.
+  //       return await channel.send(message);
+  //     }
+  //   } catch (err: unknown) {
+  //     if (err instanceof DiscordAPIError) {
+  //       // Channel not found
+  //       if (err.code === 10003) {
+  //         logger.info(
+  //           {
+  //             thread_id: this.id,
+  //             username: this.user_name,
+  //             user_id: this.user_id,
+  //           },
+  //           `thread channel no longer exists, auto closing without sending message.`,
+  //         );
+  //         await this.close("system", true);
+  //       }
+  //
+  //       if (err.code === 240000) {
+  //         logger.info(
+  //           {
+  //             thread_id: this.id,
+  //             channel_id: this.channel_id,
+  //             username: this.user_name,
+  //             user_id: this.user_id,
+  //           },
+  //           `cannot send message to thread, the message contains a link blocked by the harmful links filter.`,
+  //         );
+  //
+  //         await (
+  //           (await bot.channels.fetch(this.channel_id)) as SendableChannels
+  //         ).send(
+  //           "Failed to send message to thread channel because the message contains a link blocked by the harmful links filter",
+  //         );
+  //       }
+  //     } else {
+  //       throw err;
+  //     }
+  //   }
+  //
+  //   logger.error(
+  //     {
+  //       thread_id: this.id,
+  //       channel_id: this.channel_id,
+  //       username: this.user_name,
+  //       user_id: this.user_id,
+  //       message,
+  //     },
+  //     "cannot post to thread channel",
+  //   );
+  //
+  //   throw "something truly wild has happened";
+  // }
+  //
+  // async _startAutoAlertTimer(modId: string): Promise<void> {
+  //   if (this._autoAlertTimeout) clearTimeout(this._autoAlertTimeout);
+  //
+  //   const autoAlertDelay =
+  //     convertDelayStringToMS(config.autoAlertDelay) || 120 * 1000;
+  //
+  //   this._autoAlertTimeout = setTimeout(() => {
+  //     if (this.status !== ThreadStatus.Open) return;
+  //     this.addAlert(modId);
+  //   }, autoAlertDelay);
+  // }
+  //
+  // async replyToUser(
+  //   moderator: GuildMember | null,
+  //   text: string,
+  //   replyAttachments: Collection<string, Attachment> = new Collection(),
+  //   isAnonymous: boolean = false,
+  //   messageReference: MessageReference | null = null,
+  // ): Promise<boolean> {
+  //   if (!moderator) return false;
+  //
+  //   const moderatorName = (await getStaffUsername(moderator)).replace(
+  //     escapeFormattingRegex,
+  //     "\\$&",
+  //   );
+  //
+  //   const roleName = await getModeratorThreadDisplayRoleName(
+  //     moderator,
+  //     this.id,
+  //   );
+  //
+  //   const userMessageReference: ReplyOptions = {
+  //     messageReference: "",
+  //     failIfNotExists: true,
+  //   };
+  //
+  //   // Handle replies
+  //   if (config.relayInlineReplies && messageReference) {
+  //     const repliedTo = await this.getThreadMessageForMessageId(
+  //       messageReference.messageId || "",
+  //     );
+  //     if (repliedTo) {
+  //       userMessageReference.messageReference = repliedTo.dm_message_id;
+  //     }
+  //   }
+  //
+  //   if (config.allowSnippets && config.allowInlineSnippets) {
+  //     // Replace {{snippet}} with the corresponding snippet
+  //     // The beginning and end of the variable - {{ and }} - can be changed with the config options
+  //     // config.inlineSnippetStart and config.inlineSnippetEnd
+  //     const all = await allSnippets(this.db);
+  //
+  //     const unknownSnippets = new Set();
+  //     text = text.replace(
+  //       new RegExp(
+  //         `${config.inlineSnippetStart}(\\s*\\S+?\\s*)${config.inlineSnippetEnd}`,
+  //         "ig",
+  //       ),
+  //       (orig, trigger) => {
+  //         const snippet = all.find(
+  //           (snippet: Snippet) =>
+  //             snippet.trigger.toLowerCase === trigger.toLowerCase().trim(),
+  //         );
+  //         if (snippet == null) {
+  //           unknownSnippets.add(trigger);
+  //         }
+  //
+  //         return snippet != null ? snippet.body : orig;
+  //       },
+  //     );
+  //
+  //     if (config.errorOnUnknownInlineSnippet && unknownSnippets.size > 0) {
+  //       await this.postSystemMessage(
+  //         `The following snippets used in the reply do not exist:\n${Array.from(unknownSnippets).join(", ")}`,
+  //       );
+  //       return false;
+  //     }
+  //   }
+  //
+  //   // Prepare attachments, if any
+  //   const files: Array<Attachment> = [];
+  //   const attachmentLinks: Array<string> = [];
+  //
+  //   if (replyAttachments.size > 0) {
+  //     for (const [_, attachment] of replyAttachments) {
+  //       const result = await saveAttachment(attachment);
+  //
+  //       if (result) {
+  //         attachment.url = result;
+  //         files.push(attachment);
+  //         attachmentLinks.push(result);
+  //       }
+  //     }
+  //   }
+  //
+  //   // Re-fetch the user to avoid using a stale/partial cached User object,
+  //   // which can cause Discord to reject createDM() with 50035 CHANNEL_RECIPIENT_REQUIRED.
+  //   let user;
+  //   try {
+  //     user = await bot.users.fetch(this.user_id, { force: true });
+  //   } catch (err) {
+  //     throw new BotError(
+  //       `Could not fetch user ${this.user_id} to open a DM: ${(err as Error).message}`,
+  //     );
+  //   }
+  //
+  //   let dmChannel: DMChannel | null;
+  //   try {
+  //     dmChannel = await user.createDM(true);
+  //   } catch (err: any) {
+  //     // 50035 CHANNEL_RECIPIENT_REQUIRED -- Discord refuses to open a DM with this user
+  //     // (their account is deleted, disabled, not sharing a guild with the bot, or transient backend issue).
+  //     if (err?.code === 50035) {
+  //       throw new BotError(
+  //         `Unable to open a DM channel with <@${user.id}>. ` +
+  //           `The account may be deleted/disabled or not share a server with the bot.`,
+  //       );
+  //     }
+  //     throw err;
+  //   }
+  //
+  //   const threadMessage = new ThreadMessage({
+  //     thread_id: this.id,
+  //     message_type: ThreadMessageType.ToUser,
+  //     message_number: await getNextThreadMessageNumber(this.db, this.id),
+  //     user_id: moderator.id,
+  //     dm_channel_id: dmChannel.id,
+  //     user_name: moderatorName,
+  //     body: text,
+  //     is_anonymous: isAnonymous,
+  //     role_name: roleName,
+  //     attachments: attachmentLinks,
+  //   });
+  //
+  //   const dmContent = threadMessage.formatAsStaffReplyDM();
+  //
+  //   if (userMessageReference) {
+  //     dmContent.reply = userMessageReference;
+  //     // dmContent.allowedMentions = userMessageReference;
+  //   }
+  //
+  //   const inboxContent = threadMessage.formatAsStaffReplyThreadMessage();
+  //
+  //   if (messageReference) {
+  //     inboxContent.reply = {
+  //       messageReference: messageReference.messageId || "",
+  //       failIfNotExists: false,
+  //     };
+  //   }
+  //
+  //   // Because moderator replies have to be editable, we enforce them to fit within 1 message
+  //   if (
+  //     !messageContentIsWithinMaxLength(dmContent.content?.toString() || "") ||
+  //     !messageContentIsWithinMaxLength(inboxContent.content?.toString() || "")
+  //   ) {
+  //     //      await threadMessage.delete();
+  //     //    FIXME: Cant delete
+  //     await this.postSystemMessage(
+  //       "Reply is too long! Make sure your reply is under 2000 characters total, moderator name in the reply included.",
+  //     );
+  //     return false;
+  //   }
+  //
+  //   const dmMessage = await user.send(dmContent).catch(async (err) => {
+  //     await threadMessage.deleteFromDb(this.db);
+  //     await this.postSystemMessage(
+  //       `Error while replying to user: ${err.message}`,
+  //     );
+  //   });
+  //
+  //   if (!dmMessage) return false;
+  //
+  //   threadMessage.dm_message_id = dmMessage.id;
+  //
+  //   // Show the reply in the inbox thread
+  //   const inboxMessage = await this.postToThreadChannel({
+  //     ...inboxContent,
+  //     files,
+  //   });
+  //
+  //   if (inboxMessage) {
+  //     threadMessage.inbox_message_id = inboxMessage.id;
+  //   }
+  //
+  //   await threadMessage.saveToDb(this.db);
+  //
+  //   // Interrupt scheduled closing, if in progress
+  //   if (this.scheduled_close_at) {
+  //     await this.cancelScheduledClose();
+  //     await this.postSystemMessage(
+  //       "Cancelling scheduled closing of this thread due to new reply",
+  //     );
+  //   }
+  //
+  //   // If enabled, set up a reply alert for the moderator after a slight delay
+  //   if (config.autoAlert) {
+  //     await this._startAutoAlertTimer(moderator.id);
+  //   }
+  //
+  //   return true;
+  // }
+  //
+  // async receiveUserReply(msg: Message, skipAlert = false): Promise<void> {
+  //   const user = await bot.users.fetch(msg.author.id);
+  //   const opts = {
+  //     thread: this,
+  //     message: msg,
+  //     quiet: true,
+  //   };
+  //
+  //   // Call any registered beforeNewMessageReceivedHooks
+  //   const hookResult = await callBeforeNewMessageReceivedHooks({
+  //     user,
+  //     opts,
+  //     message: opts.message,
+  //     cancel: () => void {},
+  //   });
+  //   if (hookResult.cancelled) return;
+  //
+  //   let messageContent = msg.content || "";
+  //
+  //   let allMessageAttachments = msg.attachments;
+  //   if (msg.messageSnapshots.size > 0) {
+  //     allMessageAttachments = allMessageAttachments.concat(
+  //       (msg.messageSnapshots.first() as MessageSnapshot).attachments,
+  //     );
+  //   }
+  //
+  //   const attachmentUrls: Array<string> = [];
+  //   // const files: Array<AttachmentBuilder> = [];
+  //
+  //   for (const attachment of allMessageAttachments.values()) {
+  //     const savedAttachment = await saveAttachment(attachment);
+  //
+  //     if (savedAttachment) {
+  //       attachmentUrls.push(savedAttachment);
+  //       // files.push(
+  //       //   new AttachmentBuilder(savedAttachment, {
+  //       //     name: attachment.name,
+  //       //   }),
+  //       // );
+  //     }
+  //   }
+  //
+  //   const embeds = msg.embeds;
+  //
+  //   // Handle forwards
+  //   if (msg.reference && msg.reference.type === MessageReferenceType.Forward) {
+  //     const forward = msg.messageSnapshots.first();
+  //     if (!forward) return;
+  //
+  //     for (const embed of forward.embeds) {
+  //       embeds.push(embed);
+  //     }
+  //
+  //     let textContent = forward.content;
+  //     if (forward.stickers.size > 0) {
+  //       textContent += forward.stickers
+  //         .map((sticker) => `Sticker **[${sticker.name}](${sticker.url})**`)
+  //         .join("\n");
+  //     }
+  //
+  //     if (textContent.length === 0)
+  //       textContent = "Message contains only embeds";
+  //     messageContent = `\n\n> -# *↪ Forwarded from ${forward.guild?.name || "direct messages"}*\n> ${textContent}\n> -# ${forward.url}  •  <t:${Math.round(forward.createdTimestamp / 1000)}:f>`;
+  //   }
+  //
+  //   // Handle replies
+  //   let messageReply: MessageResolvable = "";
+  //   if (
+  //     config.relayInlineReplies &&
+  //     msg.reference &&
+  //     msg.reference.type === MessageReferenceType.Default &&
+  //     msg.reference.messageId
+  //   ) {
+  //     const repliedTo = await this.getThreadMessageForMessageId(
+  //       msg.reference.messageId,
+  //     );
+  //
+  //     if (repliedTo) {
+  //       messageReply = repliedTo.inbox_message_id;
+  //     }
+  //   }
+  //   if (msg.activity) {
+  //     let applicationName = "Unknown Application";
+  //
+  //     if (
+  //       !applicationName &&
+  //       msg.activity.partyId &&
+  //       msg.activity.partyId.startsWith("spotify:")
+  //     ) {
+  //       applicationName = "Spotify";
+  //     }
+  //
+  //     const activityText = ((): string => {
+  //       if (
+  //         msg.activity.type === MessageActivityType.Join ||
+  //         msg.activity.type === MessageActivityType.JoinRequest
+  //       ) {
+  //         return "join a game";
+  //       } else if (msg.activity.type === MessageActivityType.Spectate) {
+  //         return "spectate";
+  //       } else if (msg.activity.type === MessageActivityType.Listen) {
+  //         return "listen along";
+  //       }
+  //
+  //       return "do something";
+  //     })();
+  //
+  //     messageContent += `\n\n*<This message contains an invite to ${activityText} on ${applicationName}>*`;
+  //     messageContent = messageContent.trim();
+  //   }
+  //
+  //   if (msg.stickers) {
+  //     const stickerLines = msg.stickers.map(
+  //       (sticker) =>
+  //         `*Sent sticker "[${sticker.name}](https://media.discordapp.net/stickers/${sticker.id}.webp?size=160)":*`,
+  //     );
+  //
+  //     messageContent += `\n\n${stickerLines.join("\n")}`;
+  //   }
+  //
+  //   messageContent = messageContent.trim();
+  //   if (msg.reference && msg.reference.type === MessageReferenceType.Forward)
+  //     messageContent = `\n${messageContent}`;
+  //
+  //   // Save DB entry
+  //   const threadMessage = new ThreadMessage({
+  //     inbox_message_id: "",
+  //     thread_id: this.id,
+  //     message_type: ThreadMessageType.FromUser,
+  //     user_id: this.user_id,
+  //     user_name: config.useDisplaynames
+  //       ? msg.author.globalName || msg.author.username
+  //       : msg.author.username,
+  //     body: messageContent,
+  //     is_anonymous: false,
+  //     dm_message_id: msg.id,
+  //     dm_channel_id: msg.channel.id,
+  //     attachments: attachmentUrls,
+  //     // small_attachments: smallAttachmentLinks,
+  //     metadata: {
+  //       embeds,
+  //     },
+  //   });
+  //
+  //   // Show the user reply in the inbox thread
+  //   const inboxContent = threadMessage.formatAsUserReply();
+  //
+  //   if (messageReply) {
+  //     inboxContent.reply = {
+  //       messageReference: messageReply,
+  //       failIfNotExists: false,
+  //     };
+  //   }
+  //
+  //   // Send message reply
+  //   const inboxMessage = await this.postToThreadChannel({
+  //     ...inboxContent,
+  //     // files,
+  //     embeds,
+  //   });
+  //
+  //   // If we successfully delivered the message, this will include the message ID, which we need to save the ThreadMessage.
+  //   if (inboxMessage) threadMessage.inbox_message_id = inboxMessage.id;
+  //
+  //   await threadMessage.saveToDb(this.db);
+  //
+  //   // Call any registered afterNewMessageReceivedHooks
+  //   await callAfterNewMessageReceivedHooks({
+  //     user,
+  //     opts,
+  //     message: opts.message,
+  //   });
+  //
+  //   // Interrupt scheduled closing, if in progress
+  //   if (this.scheduled_close_at && this.scheduled_close_id) {
+  //     await this.cancelScheduledClose();
+  //     await this.postSystemMessage(
+  //       `<@!${this.scheduled_close_id}> Thread that was scheduled to be closed got a new reply. Cancelling.`,
+  //       {
+  //         allowedMentions: {
+  //           users: [this.scheduled_close_id],
+  //         },
+  //       },
+  //     );
+  //   }
+  //
+  //   if (this.alert_ids && !skipAlert) {
+  //     const ids = this.alert_ids.split(",");
+  //     const mentionsStr = ids.map((id) => `<@!${id}> `).join("");
+  //
+  //     await this.deleteAlerts();
+  //     await this.postSystemMessage(
+  //       `${Emoji.Alert} ${mentionsStr} New message from ${this.user_name}`,
+  //       {
+  //         allowedMentions: {
+  //           users: ids,
+  //         },
+  //       },
+  //     );
+  //   }
+  // }
+  //
+  // async postSystemMessage(
+  //   message: string | MessageCreateOptions,
+  //   opts: {
+  //     allowedMentions?: MessageMentionOptions;
+  //     messageReference?: MessageReference;
+  //     emptyContent?: boolean;
+  //   } = {},
+  // ): Promise<{
+  //   message: Message;
+  //   threadMessage: ThreadMessage;
+  // }> {
+  //   message = typeof message === "string" ? { content: message } : message;
+  //
+  //   const threadMessage = new ThreadMessage({
+  //     thread_id: this.id,
+  //     message_type: ThreadMessageType.System,
+  //     user_id: undefined,
+  //     user_name: "",
+  //     body: opts.emptyContent ? "" : message.content,
+  //     is_anonymous: false,
+  //   });
+  //
+  //   const { content } = threadMessage.formatAsSystem();
+  //
+  //   message.content = opts.emptyContent ? "" : content;
+  //
+  //   message.allowedMentions = opts.allowedMentions;
+  //   if (opts.messageReference) {
+  //     message.reply = {
+  //       messageReference: opts.messageReference.messageId || "",
+  //     };
+  //   }
+  //
+  //   const msg = await this.postToThreadChannel(message);
+  //
+  //   threadMessage.inbox_message_id = msg.id;
+  //   const finalThreadMessage = await threadMessage.saveToDb(this.db);
+  //
+  //   return {
+  //     message: msg,
+  //     threadMessage: finalThreadMessage,
+  //   };
+  // }
+  //
+  // async addSystemMessageToLogs(text: string): Promise<ThreadMessage> {
+  //   const threadMessage = new ThreadMessage({
+  //     thread_id: this.id,
+  //     message_type: ThreadMessageType.System,
+  //     user_name: "",
+  //     body: text,
+  //     is_anonymous: false,
+  //   });
+  //
+  //   return await threadMessage.saveToDb(this.db);
+  // }
+  //
+  // async sendSystemMessageToUser(
+  //   text: string,
+  //   opts: {
+  //     postToThreadChannel?: boolean;
+  //     allowedMentions?: MessageMentionOptions;
+  //   } = {},
+  // ): Promise<void> {
+  //   const user = await bot.users.fetch(this.user_id);
+  //   if (!user) throw `user (${this.user_id}) could not be retrieved`;
+  //
+  //   const threadMessage = new ThreadMessage({
+  //     thread_id: this.id,
+  //     message_type: ThreadMessageType.SystemToUser,
+  //     user_name: "",
+  //     body: text,
+  //     is_anonymous: false,
+  //   });
+  //
+  //   const dmMessage = await user
+  //     .send(threadMessage.formatAsSystemToUserDM())
+  //     .catch((e) => {
+  //       throw `could not send a dm to the user: ${e}`;
+  //     });
+  //
+  //   if (opts.postToThreadChannel !== false) {
+  //     const inboxMessage = threadMessage.formatAsSystemToUserThreadMessage(bot);
+  //     inboxMessage.allowedMentions = opts.allowedMentions;
+  //
+  //     const inboxMsg = await this.postToThreadChannel(inboxMessage);
+  //     threadMessage.inbox_message_id = inboxMsg.id;
+  //   }
+  //
+  //   threadMessage.dm_channel_id = dmMessage.channelId;
+  //   threadMessage.dm_message_id = dmMessage.id;
+  //
+  //   await threadMessage.saveToDb(this.db);
+  // }
+  //
+  // async postNonLogMessage(
+  //   message: MessageCreateOptions,
+  // ): Promise<Message | null> {
+  //   return this.postToThreadChannel(message);
+  // }
+  //
+  // async saveChatMessageToLogs(msg: Message): Promise<void> {
+  //   const threadMessage = new ThreadMessage({
+  //     thread_id: this.id,
+  //     message_type: ThreadMessageType.Chat,
+  //     user_id: msg.author.id,
+  //     user_name: config.useDisplaynames
+  //       ? msg.author.globalName || msg.author.username
+  //       : msg.author.username,
+  //     body: msg.content,
+  //     metadata: {
+  //       attachments: msg.attachments,
+  //     },
+  //     is_anonymous: false,
+  //     dm_message_id: msg.id,
+  //   });
+  //
+  //   return await threadMessage.saveToDb(this.db);
+  // }
+  //
+  // async saveCommandMessageToLogs(msg: Message) {
+  //   const threadMessage = new ThreadMessage({
+  //     thread_id: this.id,
+  //     message_type: ThreadMessageType.Command,
+  //     user_id: msg.author.id,
+  //     user_name: config.useDisplaynames
+  //       ? msg.author.globalName || msg.author.username
+  //       : msg.author.username,
+  //     body: msg.content,
+  //     dm_message_id: msg.id,
+  //     created_at: new Date(),
+  //     is_anonymous: false,
+  //   });
+  //
+  //   return await threadMessage.saveToDb(this.db);
+  // }
+  //
+  // async getThreadMessages(): Promise<ThreadMessage[]> {
+  //   const rows = await threadMessages.getMessagesInThread(this.db, this.id);
+  //   return rows.map((row) => new ThreadMessage(row as ThreadMessageProps));
+  // }
+  //
+  // async getThreadMessageForMessageId(
+  //   messageId: string,
+  // ): Promise<ThreadMessage> {
+  //   const data = await threadMessages.getThreadMessageBySnowflake(
+  //     this.db,
+  //     this.id,
+  //     messageId,
+  //   );
+  //
+  //   if (data && data.length > 0)
+  //     return new ThreadMessage(data[0] as ThreadMessageProps);
+  //
+  //   throw "[getThreadMessageForMessageId@Thread.ts:804] could not get thread message";
+  // }
+  //
+  // async getLatestThreadMessage(): Promise<ThreadMessage> {
+  //   const data = await threadMessages.getLatestThreadMessages(this.db, this.id);
+  //
+  //   if (data && data.length === 1)
+  //     return new ThreadMessage(data[0] as ThreadMessageProps);
+  //
+  //   throw "[getLatestThreadMessage@Thread.ts:827] could not get latest thread message";
+  // }
+  //
+  // async findThreadMessageByMessageNumber(
+  //   message_number: number,
+  // ): Promise<ThreadMessage> {
+  //   const data = await threadMessages.getThreadMessageByNumber(
+  //     this.db,
+  //     this.id,
+  //     message_number,
+  //   );
+  //
+  //   if (data && data.length === 1)
+  //     return new ThreadMessage(data[0] as ThreadMessageProps);
+  //
+  //   throw "[findThreadMessageByMessageNumber@Thread.ts:838] could not get thread message by number";
+  // }
+  //
+  // async close(
+  //   closed_by_id: string,
+  //   suppressSystemMessage = false,
+  //   silent = false,
+  // ): Promise<void> {
+  //   const log = logger.child({
+  //     msg: `Closing thread ${this.id}`,
+  //     user_id: this.user_id,
+  //     username: this.user_name,
+  //     silent,
+  //   });
+  //
+  //   if (!suppressSystemMessage) {
+  //     if (silent) {
+  //       await this.postSystemMessage("Closing thread silently...");
+  //     } else {
+  //       await this.postSystemMessage("Closing thread...");
+  //     }
+  //   }
+  //
+  //   // Mark thread as closed in the database
+  //   await threads.closeThread(this.db, this.id, closed_by_id);
+  //
+  //   // Delete channel
+  //   const channel = await bot.channels.fetch(this.channel_id);
+  //   if (channel) {
+  //     log.info({ channel: this.channel_id });
+  //     await channel.delete("Thread closed");
+  //   }
+  //
+  //   await callAfterThreadCloseHooks({ threadId: this.id });
+  // }
+  //
+  // async scheduleClose(
+  //   delay_ms: number,
+  //   user: User,
+  //   silent: boolean,
+  // ): Promise<void> {
+  //   const closer_id = user.id;
+  //   const closer_name = config.useDisplaynames
+  //     ? user.globalName || user.username
+  //     : user.username;
+  //
+  //   await threads.scheduleThreadClosure(
+  //     this.db,
+  //     this.id,
+  //     delay_ms * 1000, // Times by 1000 to turn seconds to microseconds, as the query wants.
+  //     closer_id,
+  //     closer_name,
+  //     silent,
+  //   );
+  //
+  //   await callAfterThreadCloseScheduledHooks({ thread: this });
+  // }
+  //
+  // async cancelScheduledClose(): Promise<void> {
+  //   await threads.cancelScheduledClosure(this.db, this.id);
+  //
+  //   await callAfterThreadCloseScheduleCanceledHooks({ thread: this });
+  // }
+  //
+  // async suspend(): Promise<void> {
+  //   await threads.suspendThread(this.db, this.id);
+  // }
+  //
+  // async unsuspend(): Promise<void> {
+  //   await threads.reOpenThread(this.db, this.id);
+  // }
+  //
+  // async scheduleSuspend(delay_ms: number, user: User): Promise<void> {
+  //   const suspend_id = user.id;
+  //   const suspend_name = config.useDisplaynames
+  //     ? user.globalName || user.username
+  //     : user.username;
+  //
+  //   const delay_micro = delay_ms * 1000;
+  //
+  //   await threads.scheduleThreadSuspension(
+  //     this.db,
+  //     this.id,
+  //     delay_micro,
+  //     suspend_id,
+  //     suspend_name,
+  //   );
+  // }
+  //
+  // async cancelScheduledSuspend(): Promise<void> {
+  //   await threads.cancelScheduledSuspension(this.db, this.id);
+  // }
+  //
+  // async addAlert(user_id: string): Promise<void> {
+  //   await threads.alertUserForThreadReply(this.db, this.id, user_id);
+  // }
+  //
+  // async removeAlert(user_id: string) {
+  //   await threads.removeThreadReplyAlert(this.db, this.id, user_id);
+  // }
+  //
+  // async deleteAlerts(): Promise<void> {
+  //   logger.info(
+  //     { thread_id: this.id, username: this.user_name },
+  //     "removing alerts for thread",
+  //   );
+  //
+  //   threads.clearThreadAlerts(this.db, this.id);
+  // }
+  //
+  // async editStaffReply(
+  //   threadMessage: ThreadMessage,
+  //   newText: string,
+  //   quiet = true,
+  // ): Promise<boolean> {
+  //   const newThreadMessage = new ThreadMessage({
+  //     ...threadMessage,
+  //     body: newText,
+  //   });
+  //
+  //   const formattedThreadMessage =
+  //     newThreadMessage.formatAsStaffReplyThreadMessage();
+  //   const formattedDM = newThreadMessage.formatAsStaffReplyDM();
+  //
+  //   // Same restriction as in replies. Because edits could theoretically change the number of messages a reply takes, we enforce replies
+  //   // to fit within 1 message to avoid the headache and issues caused by that.
+  //   if (
+  //     !messageContentIsWithinMaxLength(formattedDM) ||
+  //     !messageContentIsWithinMaxLength(formattedThreadMessage)
+  //   ) {
+  //     await this.postSystemMessage(
+  //       "Edited reply is too long! Make sure the edit is under 2000 characters total, moderator name in the reply included.",
+  //     );
+  //     return false;
+  //   }
+  //
+  //   const { dm_channel_id, dm_message_id, inbox_message_id } = threadMessage;
+  //
+  //   // Edit the DM (user side) message
+  //   const threadChannel = await bot.channels.fetch(dm_channel_id);
+  //
+  //   if (threadChannel?.isSendable()) {
+  //     const message = await threadChannel.messages.fetch(dm_message_id);
+  //     message.edit({
+  //       content: formattedDM.content,
+  //     });
+  //   }
+  //
+  //   // Edit the inbox (mod side) message
+  //   const inboxChannel = await bot.channels.fetch(this.channel_id);
+  //   if (inboxChannel?.isSendable()) {
+  //     const message = await inboxChannel.messages.fetch(inbox_message_id);
+  //     message.edit({
+  //       content: formattedThreadMessage.content,
+  //     });
+  //   }
+  //
+  //   if (!quiet) {
+  //     const editThreadMessage = new ThreadMessage({
+  //       thread_id: this.id,
+  //       message_type: ThreadMessageType.ReplyEdited,
+  //       user_name: "",
+  //       body: "",
+  //       is_anonymous: false,
+  //       metadata: {
+  //         originalThreadMessage: threadMessage,
+  //         newBody: newText,
+  //       },
+  //     });
+  //
+  //     const threadNotification = editThreadMessage.formatAsStaffReplyEdit();
+  //     if (!threadNotification) return false;
+  //
+  //     const inboxMessage = await this.postToThreadChannel(threadNotification);
+  //     editThreadMessage.inbox_message_id = inboxMessage.id;
+  //     await editThreadMessage.saveToDb(this.db);
+  //   }
+  //
+  //   await threadMessages.editMessageByID(this.db, threadMessage.id, newText);
+  //   return true;
+  // }
+  //
+  // async deleteStaffReply(
+  //   threadMessage: ThreadMessage,
+  //   quiet = false,
+  // ): Promise<void> {
+  //   const dmChannel = await bot.channels.fetch(threadMessage.dm_channel_id);
+  //   if (dmChannel?.isSendable())
+  //     dmChannel.messages.delete(threadMessage.dm_message_id);
+  //
+  //   const inboxChannel = await bot.channels.fetch(this.channel_id);
+  //   if (inboxChannel?.isSendable())
+  //     inboxChannel.messages.delete(threadMessage.inbox_message_id);
+  //
+  //   if (!quiet) {
+  //     const deletionThreadMessage = new ThreadMessage({
+  //       thread_id: this.id,
+  //       message_type: ThreadMessageType.ReplyDeleted,
+  //       user_name: "",
+  //       body: "",
+  //       is_anonymous: false,
+  //     });
+  //
+  //     deletionThreadMessage.metadata.originalThreadMessage = threadMessage;
+  //
+  //     const threadNotification =
+  //       deletionThreadMessage.formatAsStaffReplyDeletion();
+  //
+  //     if (!threadNotification) return;
+  //
+  //     const inboxMessage = await this.postToThreadChannel(threadNotification);
+  //     deletionThreadMessage.inbox_message_id = inboxMessage.id;
+  //
+  //     await deletionThreadMessage.saveToDb(this.db);
+  //   }
+  //
+  //   await threadMessage.deleteFromDb(this.db);
+  // }
+  //
+  // isClosed() {
+  //   return this.status === ThreadStatus.Closed;
+  // }
+  //
+  // async recoverDowntimeMessages() {
+  //   if (await isBlocked(this.user_id)) return;
+  //
+  //   const user = await bot.users.fetch(this.user_id);
+  //   const dmChannel = await user.createDM();
+  //   if (!dmChannel) return;
+  //
+  //   const lastMessageId = (await this.getLatestThreadMessage()).dm_message_id;
+  //
+  //   const messages = await dmChannel.messages.fetch({
+  //     limit: 50,
+  //     after: lastMessageId,
+  //   });
+  //
+  //   if (!messages || messages.size === 0) return;
+  //
+  //   const filtered = messages
+  //     .values()
+  //     .toArray()
+  //     .filter((msg) => msg.author.id === this.user_id); // Make sure we're not recovering bot or system messages
+  //
+  //   if (filtered.length === 0) return;
+  //
+  //   await this.postSystemMessage(
+  //     `📥 Recovering ${filtered.length} message${filtered.length === 1 ? "" : "s"} sent by user during bot downtime!`,
+  //   );
+  //
+  //   let isFirst = true;
+  //   for (const msg of filtered.reverse()) {
+  //     await this.receiveUserReply(msg, !isFirst);
+  //     isFirst = false;
+  //   }
+  // }
+  //
+  // public async getDMChannel(): Promise<DMChannel> {
+  //   try {
+  //     const user = await bot.users.fetch(this.user_id);
+  //     return await user.createDM();
+  //   } catch (err) {
+  //     logger.error({ thread_id: this.id, user_id: this.user_id, err });
+  //     throw err;
+  //   }
+  // }
+  //
+  // public async getThreadChannel(): Promise<SendableChannels> {
+  //   try {
+  //     const channel = await bot.channels.fetch(this.channel_id);
+  //
+  //     if (channel?.isSendable()) return channel;
+  //
+  //     throw "it was impossible to retrieve the thread channel";
+  //   } catch (err) {
+  //     logger.error({ thread_id: this.id, user_id: this.user_id, err });
+  //     throw err;
+  //   }
+  // }
+  //
+  // public async sendInfoHeader(
+  //   user: User,
+  //   userGuildData: Map<string, { guild: Guild; member: GuildMember }>,
+  // ): Promise<boolean> {
+  //   const embed = new EmbedBuilder();
+  //   if (user.avatarURL !== null) embed.setThumbnail(user.avatarURL());
+  //
+  //   const infoHeaderItems = [];
+  //
+  //   // Account age
+  //   const diff = Date.now() - user.createdAt.getTime();
+  //   const accountAge = humanizeDuration(diff, {
+  //     largest: 2,
+  //     round: true,
+  //   });
+  //   infoHeaderItems.push(`ACCOUNT AGE **${accountAge}**`);
+  //
+  //   const guildStatus = await userGuildStatus(bot, user);
+  //
+  //   const join = (() => {
+  //     if (guildStatus.ban && !guildStatus.main) {
+  //       const time = Math.round(
+  //         (guildStatus.ban.joinedTimestamp || Date.now()) / 1000,
+  //       );
+  //       return `${Emoji.Appeals} <t:${time}:d>`;
+  //     }
+  //
+  //     if (guildStatus.main) {
+  //       const time = Math.round(
+  //         (guildStatus.main.joinedTimestamp || Date.now()) / 1000,
+  //       );
+  //       return `${Emoji.Overwatch} <t:${time}:d>`;
+  //     }
+  //
+  //     return "Unknown";
+  //   })();
+  //
+  //   const fields: Array<EmbedField> = [
+  //     {
+  //       name: "Joined",
+  //       value: `${Emoji.Discord} <t:${Math.round(user.createdAt.getTime() / 1000)}:d>${Spacing.Doublespace}**•**${Spacing.Doublespace}${join}`,
+  //       inline: true,
+  //     },
+  //     {
+  //       name: "User ID",
+  //       value: `\`${user.id}\``,
+  //       inline: true,
+  //     },
+  //   ];
+  //
+  //   const separator = (len: number = 16) => "".padStart(Math.min(len, 28), "⎽");
+  //
+  //   // Grab roles, pronouns, and mute status from the main server (if they are in it!)
+  //   let muteStatus = false;
+  //   if (guildStatus.main) {
+  //     let pronouns: Array<string> = [];
+  //     const roles: Array<string> = [];
+  //     // Real main server - not ban appeals.
+  //     for (const role of guildStatus.main.roles.cache.values()) {
+  //       if (role.name.includes("She/Her")) pronouns.push("she/her");
+  //       else if (role.name.includes("He/Him")) pronouns.push("he/him");
+  //       else if (role.name.includes("They/Them")) pronouns.push("they/them");
+  //       else if (role.name.includes("Any Pronouns")) pronouns.push("any");
+  //       else if (role.name.includes("Muted")) muteStatus = true;
+  //
+  //       const modmailRole = localRole(role.name);
+  //       if (modmailRole) roles.push(modmailRole);
+  //     }
+  //
+  //     let sortedRoles = sortRoles(roles);
+  //
+  //     // Exclude "Regular" only if a regular role colour is included
+  //     const regularColours = new Set()
+  //       .add("Guillard Purple")
+  //       .add("Vishkar Blue")
+  //       .add("Kamori Teal")
+  //       .add("Oladele Green")
+  //       .add("Helix Yellow");
+  //     if (sortedRoles.some((el) => regularColours.has(el))) {
+  //       sortedRoles = sortedRoles.filter((role) => role !== "Regular");
+  //     }
+  //
+  //     const rolesForDisplay = sortedRoles
+  //       .map((r) =>
+  //         [
+  //           "Guillard Purple",
+  //           "Vishkar Blue",
+  //           "Kamori Teal",
+  //           "Oladele Green",
+  //           "Helix Yellow",
+  //         ].includes(r)
+  //           ? "Regular"
+  //           : r,
+  //       )
+  //       .join(", ");
+  //
+  //     // If they have Any Pronouns, default to only showing any.
+  //     if (pronouns.includes("any")) pronouns = ["any"];
+  //
+  //     fields.push({
+  //       name: `${escapeMarkdown(guildStatus.main.nickname || guildStatus.main.user.username)}${pronouns.length > 0 ? `  •  (${pronouns.join("/")})` : ""}`,
+  //       value:
+  //         rolesForDisplay.length > 0
+  //           ? `${roleEmoji(roles[0] || "")}${Spacing.DraysPrecious}${rolesForDisplay}`
+  //           : "",
+  //       inline: false,
+  //     });
+  //
+  //     if (guildStatus?.main?.voice?.channelId && !muteStatus) {
+  //       const channelName = guildStatus?.main?.voice.channel?.name || "unknown";
+  //
+  //       const lastField = fields.at(-1);
+  //       if (lastField)
+  //         lastField.value += `\n-# ${separator((guildStatus?.main?.voice?.channel?.name?.length || 10) * 2)}`;
+  //
+  //       fields.push({
+  //         name: `In Voice Channel`,
+  //         value: `<#${guildStatus.main.voice.channelId}> (${channelName})`,
+  //         inline: false,
+  //       });
+  //     }
+  //   }
+  //
+  //   // User id (and mention, if enabled)
+  //   infoHeaderItems.push(`ID **${user.id}** (<@!${user.id}>)`);
+  //
+  //   let infoHeader = infoHeaderItems.join(", ");
+  //   const userBanned = guildStatus.ban !== null && guildStatus.main === null;
+  //
+  //   // Guild member info
+  //   for (const [_guildId, guildData] of userGuildData.entries()) {
+  //     const nickname =
+  //       guildData.member.nickname || config.useDisplaynames
+  //         ? guildData.member.user.globalName
+  //         : guildData.member.user.username;
+  //
+  //     const headerItems = [
+  //       {
+  //         name: "Display Name",
+  //         value: escapeMarkdown(nickname || guildData.member.user.username),
+  //       },
+  //     ];
+  //
+  //     if (guildData.member.voice.channelId && !muteStatus) {
+  //       const voiceChannel =
+  //         guildData.member?.voice?.channel?.name || "unknown";
+  //
+  //       headerItems.push({
+  //         name: "Voice Channel",
+  //         value: escapeMarkdown(voiceChannel),
+  //       });
+  //     }
+  //
+  //     const member = await guildData.member.fetch();
+  //     if (member.roles.cache.size > 0) {
+  //       headerItems.push({
+  //         name: "Roles",
+  //         value: guildData.member.roles.cache
+  //           .filter((c) => c.name !== "@everyone")
+  //           .map((r) => r.name)
+  //           .join(", "),
+  //       });
+  //     }
+  //
+  //     const headerStr = headerItems
+  //       .map((h) => `${h.name.toUpperCase()} ${h.value}`)
+  //       .join(", ");
+  //
+  //     infoHeader += `\n**[${escapeMarkdown(guildData.guild.name)}]** ${headerStr}`;
+  //   }
+  //
+  //   const userLogCount = await getUserThreadsClosedCount(
+  //     this.db,
+  //     this.user_id,
+  //     this.created_at,
+  //   );
+  //
+  //   embed.setTitle(`Thread #${userLogCount + 1} with ${user.username}`);
+  //
+  //   if (userLogCount > 0) {
+  //     infoHeader += `\n\nThis user has **${userLogCount}** previous modmail threads. Use \`${config.prefix}logs\` to see them.`;
+  //   }
+  //
+  //   const userNotes = await findNotesByUserId(user.id);
+  //   if (userNotes.length) {
+  //     infoHeader += `\n\nThis user has **${userNotes.length}** notes. Use \`${config.prefix}notes\` to see them.`;
+  //   }
+  //
+  //   if (userLogCount > 0) {
+  //     const mostRecentThread = await getLastClosedThreadByUser(
+  //       this.db,
+  //       user.id,
+  //     );
+  //
+  //     if (mostRecentThread) {
+  //       mostRecentThread.log_storage_type = "local";
+  //       const mostRecentLog = await getLogUrl(mostRecentThread);
+  //
+  //       embed.setDescription(
+  //         `${userLogCount} previous thread${userLogCount === 1 ? `` : "s"} [(view last)](${mostRecentLog})`,
+  //       );
+  //     }
+  //   } else {
+  //     embed.setDescription("No previous threads");
+  //   }
+  //
+  //   if (muteStatus) {
+  //     embed.setColor(Colours.MuteRed as HexColorString);
+  //     const lastField = fields.at(-1);
+  //     if (lastField) lastField.value += `\n-# ${separator(20)}`;
+  //
+  //     fields.push({
+  //       name: `${Emoji.Muted} **User is currently muted**\n`,
+  //       value: "",
+  //       inline: false,
+  //     });
+  //   }
+  //
+  //   if (userBanned) {
+  //     embed.setColor(Colours.BanRed as HexColorString);
+  //
+  //     fields.push(
+  //       {
+  //         name: `${user.displayName}`,
+  //         value: `\n-# ${separator(20)}`,
+  //         inline: false,
+  //       },
+  //       {
+  //         name: `${Emoji.Banned} **User is currently banned**\n`,
+  //         value: "",
+  //         inline: false,
+  //       },
+  //     );
+  //   }
+  //
+  //   embed.setFields(fields);
+  //   infoHeader += "\n────────────────";
+  //
+  //   const message = await (await this.getThreadChannel()).send({
+  //     content: "",
+  //     embeds: [embed],
+  //   });
+  //
+  //   await new ThreadMessage({
+  //     thread_id: this.id,
+  //     message_type: ThreadMessageType.System,
+  //     user_id: undefined,
+  //     user_name: "",
+  //     body: infoHeader,
+  //     metadata: {
+  //       embeds: [embed],
+  //     },
+  //     inbox_message_id: message.id,
+  //     is_anonymous: false,
+  //   }).saveToDb(this.db);
+  //
+  //   return !!message;
+  // }
+  //
+  // public async getCloseEmbed(closer_id: string): Promise<EmbedBuilder | null> {
+  //   const user = await bot.users.fetch(this.user_id);
+  //   if (!user) return null;
+  //
+  //   const author =
+  //     getInboxGuild().members.cache.get(closer_id) ||
+  //     (await getInboxGuild().members.fetch(closer_id));
+  //   if (!author) return null;
+  //
+  //   const msgStats = await getThreadMessageStats(this.db, this.id);
+  //   if (!msgStats) return null;
+  //
+  //   const staffReplyData = await getThreadStaffReplyCounts(this.db, this.id);
+  //   let staffReplies: Array<string> = [];
+  //   if (staffReplyData)
+  //     staffReplies = await Promise.all(
+  //       staffReplyData.map(async (reply) => {
+  //         const registeredName = await getRegisteredUsername(
+  //           this.db,
+  //           reply.user_id,
+  //         );
+  //         const username = await (async () => {
+  //           if (!registeredName)
+  //             return (await bot.users.fetch(reply.user_id)).username;
+  //
+  //           return registeredName;
+  //         })();
+  //
+  //         return `${username} (${reply.msg_count})`;
+  //       }),
+  //     );
+  //
+  //   const embed = new EmbedBuilder();
+  //   const threadNumber = await getUserThreadsClosedCount(
+  //     this.db,
+  //     user.id,
+  //     this.created_at,
+  //   );
+  //   embed.setTitle(`Thread #${threadNumber} with ${user.username} closed`);
+  //   const roleEmoji = (() => {
+  //     const roleNames = author.roles.cache.map((r) => r.name.toLowerCase());
+  //     if (roleNames.includes("admin")) return Emoji.Roles.Admin;
+  //
+  //     if (roleNames.includes("trainee")) return Emoji.Roles.Trainee;
+  //
+  //     return Emoji.Roles.Moderator;
+  //   })();
+  //
+  //   embed.setDescription(
+  //     `-# \`${user.id}\`${Spacing.Doublespace}•${Spacing.Doublespace}Closed by ${roleEmoji} ${(await getRegisteredUsername(this.db, author.id)) || author.user.username}${Spacing.Doublespace}•${Spacing.Doublespace}[(View log)](${await this.logUrl()})\n`,
+  //   );
+  //   embed.setColor(Colours.BanRed as HexColorString);
+  //
+  //   embed.addFields([
+  //     {
+  //       name: "Total Messages",
+  //       value: `-# **${msgStats.received}** User, **${msgStats.replies}** Replies, **${msgStats.internal}** Internal`,
+  //       inline: true,
+  //     },
+  //     {
+  //       name: `Participants`,
+  //       value: `-# ${staffReplies.length > 0 ? staffReplies.join(", ") : "None"}`,
+  //       inline: true,
+  //     },
+  //   ]);
+  //
+  //   return embed;
+  // }
+  //
+  // public async logUrl(): Promise<string> {
+  //   return await getSelfUrl(`logs/${this.id}`);
+  // }
 }
 
 // Default export the Thread class
@@ -1690,7 +1636,7 @@ export async function createNewThreadForUser(
       }
     }
 
-    await newThread.sendInfoHeader(user, userGuildData);
+    await sendInfoHeader(db, newThread, user, userGuildData);
 
     return newThread;
   };

@@ -1,13 +1,13 @@
 import { Collection, type Message } from "discord.js";
 import { parseArguments } from "knub-command-manager";
 import type { ModmailConfig } from "../config";
-import type { Snippet } from "../data/Snippet";
-import * as snippets from "../repositories/snippets";
 import type Thread from "../data/Thread";
+import type { DbQuery } from "../db";
 import type { ModuleProps } from "../plugins";
+import { add, all, del, get, type Snippet } from "../repositories/snippets";
 import { disableCodeBlocks, postSystemMessageWithFallback } from "../utils";
 
-export default ({ config, commands }: ModuleProps) => {
+export default ({ config, commands, db }: ModuleProps) => {
   if (!config.allowSnippets) return;
 
   // Show or add a snippet
@@ -15,7 +15,7 @@ export default ({ config, commands }: ModuleProps) => {
     "snippet",
     "<trigger> [text$]",
     async (msg, args, thread) => {
-      const snippet = await snippets.get(args.trigger as string);
+      const snippet = await get(db, args.trigger as string);
       if (!msg.channel.isSendable()) return;
 
       if (snippet) {
@@ -37,7 +37,8 @@ export default ({ config, commands }: ModuleProps) => {
       } else {
         if (args.text) {
           // If the snippet doesn't exist and the user wants to create it, create it
-          await snippets.add(
+          await add(
+            db,
             args.trigger as string,
             args.text as string,
             msg.author.id as string,
@@ -68,7 +69,7 @@ export default ({ config, commands }: ModuleProps) => {
     async (msg, args, thread) => {
       if (!msg.channel.isSendable()) return;
 
-      const snippet = await snippets.get(args.trigger as string);
+      const snippet = await get(db, args.trigger as string);
       if (!snippet) {
         postSystemMessageWithFallback(
           msg.channel,
@@ -78,7 +79,7 @@ export default ({ config, commands }: ModuleProps) => {
         return;
       }
 
-      await snippets.del(args.trigger as string);
+      await del(db, args.trigger as string);
       postSystemMessageWithFallback(
         msg.channel,
         thread,
@@ -98,7 +99,7 @@ export default ({ config, commands }: ModuleProps) => {
 
       const trigger = (args.trigger as string) || "";
 
-      const snippet = await snippets.get(trigger);
+      const snippet = await get(db, trigger);
       if (!snippet) {
         postSystemMessageWithFallback(
           msg.channel,
@@ -108,8 +109,8 @@ export default ({ config, commands }: ModuleProps) => {
         return;
       }
 
-      await snippets.del(trigger);
-      await snippets.add(trigger, args.text as string, msg.author.id as string);
+      await del(db, trigger);
+      await add(db, trigger, args.text as string, msg.author.id as string);
 
       postSystemMessageWithFallback(
         msg.channel,
@@ -126,7 +127,7 @@ export default ({ config, commands }: ModuleProps) => {
     "snippets",
     [],
     async (msg, _args, thread) => {
-      const allSnippets = await snippets.all();
+      const allSnippets = await all(db);
       const triggers = allSnippets.map((s: Snippet) => s.trigger);
       triggers.sort();
 
@@ -145,6 +146,7 @@ export default ({ config, commands }: ModuleProps) => {
 };
 
 export async function handleSnippet(
+  db: DbQuery,
   msg: Message,
   config: ModmailConfig,
   thread: Thread,
@@ -162,7 +164,7 @@ export async function handleSnippet(
   const rawArgs = matches[2] || "";
   if (!trigger) return;
 
-  const snippet = await snippets.get(trigger);
+  const snippet = await get(db, trigger);
   if (!snippet) return;
 
   const args = (rawArgs ? parseArguments(rawArgs) : []).map((arg) => arg.value);

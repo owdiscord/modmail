@@ -1,5 +1,5 @@
-import { test } from "node:test";
 import { strict as assert } from "node:assert/strict";
+import { test } from "node:test";
 import { UnicodePeriod } from "../style";
 import { formatUsernameForChannel } from "./Thread";
 

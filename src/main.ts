@@ -11,22 +11,22 @@ import {
   type OmitPartialGroupDMChannel,
   type PartialMessage,
 } from "discord.js";
+import type { Logger } from "pino";
 import { type Commands, createCommandManager } from "./commands";
 import config from "./config";
 import * as blocked from "./data/blocked";
-import { ACCIDENTAL_THREAD_MESSAGES } from "./data/constants";
-import * as threads from "./repositories/threads";
-import * as threadMessages from "./repositories/threadMessages";
-import { useDb, type DbQuery } from "./db";
+import Thread, { createNewThreadForUser } from "./data/Thread";
+import { type DbQuery, useDb } from "./db";
 import logger from "./logger";
 import { createPluginProps, loadPlugins } from "./plugins";
 import { handleLogPageChange } from "./plugins/logs";
 import { handleSnippet } from "./plugins/snippets";
-import { messageQueue, SerialQueue } from "./queue";
+import { messageQueue, type SerialQueue } from "./queue";
+import * as threadMessages from "./repositories/threadMessages";
+import * as threads from "./repositories/threads";
 import * as utils from "./utils";
 import { postError } from "./utils";
-import Thread, { createNewThreadForUser } from "./data/Thread";
-import type { Logger } from "pino";
+import { ThreadMessageType } from "./data/constants";
 
 const db = useDb();
 
@@ -263,7 +263,7 @@ async function handleInboxServerMessage(
       msg.content.startsWith(config.anonSnippetPrefix));
 
   const threadRow = await threads.findByChannelID(db, msg.channel.id);
-  if (!threadRow || !threadRow[0]) return null;
+  if (!threadRow?.[0]) return null;
   const thread = new Thread(db, threadRow[0]);
 
   if (isSnippet && thread) {
@@ -458,7 +458,7 @@ async function handleMessageEdit(
   const newContent = oldMessage?.content || threadMessage.body;
   const oldContent = msg.content;
 
-  if (threadMessage.isFromUser()) {
+  if (threadMessage.message_type === ThreadMessageType.FromUser) {
     const editMessage = utils.disableLinkPreviews(
       `**The user edited their message:**\n\`B:\` ${oldContent}\n\`A:\` ${newContent}`,
     );
@@ -469,7 +469,7 @@ async function handleMessageEdit(
     // This mirrors how the logs would look when we're not directly updating the message.
     await thread.addSystemMessageToLogs(editMessage);
 
-    const threadMessageWithEdit = threadMessage.clone();
+    const threadMessageWithEdit = structuredClone(threadMessage);
     threadMessageWithEdit.body = newContent;
     const formatted = threadMessageWithEdit.formatAsUserReply();
 
@@ -495,8 +495,8 @@ async function handleMessageEdit(
       await thread.postSystemMessage(editMessage);
   }
 
-  if (threadMessage.isChat()) {
-    const message = await msg.fetch();
+  if (threadMessage.message_type === ThreadMessageType.Chat) {
+    const _message = await msg.fetch();
     threadMessages.updateMessageContent(db, thread.id, msg.id, msg.content);
   }
 }
@@ -542,7 +542,7 @@ async function handleMessageDelete(
   // }
 
   // If the deleted message was staff chatter in the thread channel, also delete it from the logs
-  if (threadMessage.isChat())
+  if (threadMessage.message_type === ThreadMessageType.Chat)
     threadMessages.deleteMessage(db, thread.id, msg.id);
 }
 

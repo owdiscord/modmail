@@ -23,7 +23,7 @@ export async function findNote(sql: DbQuery, id: string) {
   const notes =
     await sql<NoteRow>`SELECT * FROM notes WHERE id = ${id} LIMIT 1`;
 
-  return notes && notes[0] ? notes[0] : null;
+  return notes?.[0] ? notes[0] : null;
 }
 
 // Delete a note from the database

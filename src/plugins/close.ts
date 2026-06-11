@@ -1,8 +1,8 @@
 import { Collection } from "discord.js";
-import * as snippets from "../repositories/snippets";
-import { getThreadsThatShouldBeClosed } from "../data/threads";
+import { getThreadsThatShouldBeClosed } from "../repositories/threads";
 import logger from "../logger";
 import type { ModuleProps } from "../plugins";
+import * as snippets from "../repositories/snippets";
 import {
   getLogChannel,
   humanizeDelay,

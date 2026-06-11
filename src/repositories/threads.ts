@@ -1,10 +1,11 @@
+import type { User } from "discord.js";
 import type { RowDataPacket } from "mysql2";
-import { Thread, type ThreadProps } from "../data/Thread";
-import type { DbQuery, MutationResult } from "../db";
-import { ThreadMessageType, ThreadStatus } from "../data/constants";
-import { type User } from "discord.js";
 import { v4 } from "uuid";
+import { ThreadMessageType, ThreadStatus } from "../data/constants";
+import type { ThreadProps, Thread as ThreadX } from "../data/Thread";
+import type { DbQuery, MutationResult } from "../db";
 
+export type Thread = ThreadX;
 export type ThreadRow = ThreadProps & RowDataPacket;
 
 // Find a thread by it's internal ID (uuid format, used in loglinks)
@@ -429,7 +430,7 @@ export async function getThreadMessageStats(
   thread_id: string,
 ): Promise<ThreadMessageStats | null> {
   const result = await db<
-    Array<{ message_type: ThreadMessageType; msg_count: number }>
+    RowDataPacket & { message_type: ThreadMessageType; msg_count: number }
   >`
 SELECT message_type, COUNT(*) msg_count FROM thread_messages WHERE thread_id = ${thread_id} GROUP BY message_type ORDER BY msg_count;`;
 
@@ -454,17 +455,20 @@ SELECT message_type, COUNT(*) msg_count FROM thread_messages WHERE thread_id = $
   return null;
 }
 
+export interface StaffReplyData {
+  user_id: string;
+  msg_count: number;
+}
+
 export async function getThreadStaffReplyCounts(
   db: DbQuery,
   thread_id: string,
-): Promise<null | Array<{ user_id: string; msg_count: number }>> {
-  const result = await db<
-    Array<{ user_id: string; msg_count: number }>
+): Promise<StaffReplyData[]> {
+  const rows = await db<
+    StaffReplyData & RowDataPacket
   >`SELECT user_id, COUNT(*) msg_count FROM thread_messages WHERE thread_id = ${thread_id} AND message_type = ${ThreadMessageType.ToUser} GROUP BY user_id ORDER BY msg_count DESC`;
 
-  if (result) return result;
-
-  return null;
+  return rows || [];
 }
 
 export async function getUserThreadsClosedCount(
@@ -473,10 +477,12 @@ export async function getUserThreadsClosedCount(
   created_time: Date,
 ): Promise<number> {
   const result = await db<
-    Array<{ count: number }>
+    RowDataPacket & {
+      count: number;
+    }
   >`SELECT coalesce(COUNT(id), 0) count FROM threads WHERE user_id = ${user_id} AND created_at <= ${created_time} AND status = ${ThreadStatus.Closed}`;
 
-  if (result && result.length === 1) return result[0]?.count || 0;
+  if (result && result[0]) return result[0]?.count || 0;
 
   return 0;
 }
