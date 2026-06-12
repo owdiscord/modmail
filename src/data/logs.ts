@@ -3,8 +3,8 @@ import { useDb } from "../db";
 import { getRegisteredUsername } from "../repositories/registration";
 import { getSelfUrl } from "../utils";
 import { ThreadMessageType } from "./constants";
-import type Thread from "./Thread";
-import type ThreadMessage from "./ThreadMessage";
+import type { Thread } from "./Thread";
+import type { ThreadMessage } from "./ThreadMessage";
 
 export const getLogUrl = async (thread: Thread): Promise<string> => {
   return getSelfUrl(`/logs/${thread.id}`);
@@ -115,7 +115,7 @@ export const formatLog = async (
       }
 
       if (message.attachments.length > 0)
-        line += `\n\n${message.attachments.join("\n")}`;
+        line += `\n\n${JSON.parse(message.attachments).join("\n")}`;
 
       return line;
     }),

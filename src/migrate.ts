@@ -10,13 +10,16 @@ const migrationTableName = "schema_migrations";
 async function createMigrationTable() {
   // First, just make sure we are migrating any old knex stuff
   await db
-    .execute(`RENAME TABLE knex_migrations TO ${migrationTableName};`)
+    .raw(`RENAME TABLE knex_migrations TO ${migrationTableName};`, [])
     .catch((_) => noop());
 
   try {
-    await db.execute(`UPDATE ${migrationTableName}
+    await db.raw(
+      `UPDATE ${migrationTableName}
 SET name = SUBSTRING(name, 1, LENGTH(name) - 3)
-WHERE name LIKE '%.js';`);
+WHERE name LIKE '%.js';`,
+      [],
+    );
   } catch (e) {
     logger.error(
       { err: e },
@@ -25,20 +28,24 @@ WHERE name LIKE '%.js';`);
     process.exit(1);
   }
 
-  await db.execute(`CREATE TABLE IF NOT EXISTS ${migrationTableName} (
+  await db.raw(
+    `CREATE TABLE IF NOT EXISTS ${migrationTableName} (
     id integer PRIMARY KEY,
     name varchar(256) NOT NULL,
     batch integer NOT NULL DEFAULT 1,
     migration_time datetime DEFAULT now()
-  )`);
+  )`,
+    [],
+  );
 }
 
 async function getAppliedMigrations(): Promise<Set<string>> {
-  const [rows] = await db.execute<(RowDataPacket & { name: string })[]>(
+  const rows = await db.raw<RowDataPacket & { name: string }[]>(
     `SELECT name FROM ${migrationTableName}`,
+    [],
   );
 
-  return new Set(rows.map((row) => row.name));
+  return rows ? new Set(rows.map((row) => row.name)) : new Set();
 }
 
 async function getMigrationsFromFilesystem(): Promise<
@@ -94,15 +101,11 @@ export async function migrateDown(migration: string, force = false) {
 
   const { down, name } = found;
 
-  await db.beginTransaction();
-
   try {
-    await db.beginTransaction();
-    await db.execute(down);
-    await db.execute(`DELETE FROM ${migrationTableName} WHERE name = ?`, [
-      name,
-    ]);
-    await db.commit();
+    await db.transaction(async (sql) => {
+      await sql.raw(down, []);
+      await sql.raw(`DELETE FROM ${migrationTableName} WHERE name = ?`, [name]);
+    });
   } catch (e) {
     logger.error({ migration, err: e }, "failed to down migration");
     process.exit(1);
@@ -124,13 +127,13 @@ export async function migrateAllUp() {
   for (const { name, up } of migrations) {
     if (!applied.has(name))
       try {
-        await db.beginTransaction();
-        await db.execute(up);
-        await db.execute(
-          `INSERT INTO ${migrationTableName} (name, batch, migration_time) VALUES (?, 1, now())`,
-          [name],
-        );
-        await db.commit();
+        await db.transaction<void>(async (sql) => {
+          await sql.raw(up, []);
+          await sql.raw(
+            `INSERT INTO ${migrationTableName} (name, batch, migration_time) VALUES (?, 1, now())`,
+            [name],
+          );
+        });
 
         logger.info({ migration: name, upped: true });
         count++;

@@ -11,7 +11,7 @@ export interface Snippet {
 export type SnippetRow = Snippet & RowDataPacket;
 
 // Get a single snippet by its trigger string
-export async function get(
+export async function getSnippet(
   sql: DbQuery,
   trigger: string,
 ): Promise<Snippet | null> {
@@ -22,24 +22,24 @@ export async function get(
 }
 
 // Insert a new snippet to the database. Fail if it already exists.
-export async function add(
+export async function addSnippet(
   sql: DbQuery,
   trigger: string,
   body: string,
   created_by = "",
 ) {
-  if (await get(sql, trigger)) return;
+  if (await getSnippet(sql, trigger)) return;
 
   return await sql.mutation`INSERT INTO snippets (trigger, body, created_by, created_at) VALUES (${trigger}, ${body}, ${created_by}, now())`;
 }
 
 // Delete a given snippet by it's trigger
-export async function del(sql: DbQuery, trigger: string) {
+export async function deleteSnippet(sql: DbQuery, trigger: string) {
   return await sql.mutation`DELETE FROM snippets WHERE LOWER(\`trigger\`) = ${trigger.toLowerCase()} LIMIT 1`;
 }
 
 // Return all snippets
-export async function all(sql: DbQuery) {
+export async function allSnippets(sql: DbQuery) {
   const snippets =
     await sql<SnippetRow>`SELECT trigger, body, created_at, created_by FROM snippets`;
 

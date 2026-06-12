@@ -1,9 +1,9 @@
-import {
-  createNewThreadForUser,
-  findOpenThreadByUserId,
-} from "../data/threads";
+import { findOpenThreadByUserID } from "../repositories/threads";
 import type { ModuleProps } from "../plugins";
 import { postSystemMessageWithFallback } from "../utils";
+import { type Thread, createNewThreadForUser } from "../data/Thread";
+import { postSystemMessage } from "../thread";
+import { threadCreationQueue } from "../queue";
 
 export default ({ bot, db, config, commands }: ModuleProps) => {
   commands.addInboxServerCommand(
@@ -27,7 +27,10 @@ export default ({ bot, db, config, commands }: ModuleProps) => {
         return;
       }
 
-      const existingThread = await findOpenThreadByUserId(db, user.id);
+      const existingThread = (
+        await findOpenThreadByUserID(db, user.id)
+      )[0] as Thread;
+
       if (existingThread) {
         postSystemMessageWithFallback(
           msg.channel,
@@ -37,16 +40,23 @@ export default ({ bot, db, config, commands }: ModuleProps) => {
         return;
       }
 
-      const createdThread = await createNewThreadForUser(db, user, {
-        quiet: true,
-        ignoreRequirements: true,
-        ignoreHooks: true,
-        source: "command",
-      });
+      const createdThread = await createNewThreadForUser(
+        db,
+        threadCreationQueue,
+        user,
+        {
+          quiet: true,
+          ignoreRequirements: true,
+          ignoreHooks: true,
+          source: "command",
+        },
+      );
 
       if (createdThread) {
         msg.channel.send(`Thread opened: <#${createdThread.channel_id}>`);
-        createdThread.postSystemMessage(
+        postSystemMessage(
+          db,
+          createdThread,
           `Thread was opened by ${msg.member?.nickname || config.useDisplaynames ? msg.author.globalName || msg.author.username : msg.author.username}`,
         );
       }

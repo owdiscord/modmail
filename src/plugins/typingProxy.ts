@@ -1,8 +1,9 @@
 import { ChannelType, Events, GuildChannel } from "discord.js";
-import Thread from "../data/Thread";
+import type { Thread } from "../data/Thread";
 import type { ModuleProps } from "../plugins";
 import * as threads from "../repositories/threads";
 import { noop } from "../utils";
+import { getDMChannel } from "../thread";
 
 export default ({ bot, db, config }: ModuleProps) => {
   if (config.typingProxyToInbox || config.typingProxyToUser) {
@@ -14,7 +15,7 @@ export default ({ bot, db, config }: ModuleProps) => {
         const threadRow = await threads.findOpenThreadByUserID(db, user.id);
         if (!threadRow?.[0]) return;
 
-        const thread = new Thread(db, threadRow[0]);
+        const thread = threadRow[0] as Thread;
         const threadChannel = await bot.channels.fetch(thread.channel_id);
 
         if (threadChannel?.isSendable())
@@ -31,9 +32,9 @@ export default ({ bot, db, config }: ModuleProps) => {
         const threadRow = await threads.findByChannelID(db, channel.id);
         if (!threadRow?.[0]) return;
 
-        const thread = new Thread(db, threadRow[0]);
+        const thread = threadRow[0] as Thread;
 
-        const dmChannel = await thread.getDMChannel();
+        const dmChannel = await getDMChannel(thread);
         if (!dmChannel) return;
 
         dmChannel.sendTyping().catch(noop);

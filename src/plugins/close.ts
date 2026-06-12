@@ -9,6 +9,15 @@ import {
   readMultilineConfigValue,
 } from "../utils";
 import { getDelayFromArgs } from "../utils/time";
+import {
+  buildCloseEmbed,
+  cancelScheduledClose,
+  closeThread,
+  postSystemMessage,
+  scheduleClose,
+  sendSystemMessageToUser,
+} from "../thread";
+import { getLogUrl } from "../data/logs";
 
 export default ({ config, commands, db }: ModuleProps) => {
   // Check for threads that are scheduled to be closed and close them
@@ -17,20 +26,28 @@ export default ({ config, commands, db }: ModuleProps) => {
     for (const thread of threadsToBeClosed) {
       if (config.closeMessage && !thread.scheduled_close_silent) {
         const closeMessage = readMultilineConfigValue(config.closeMessage);
-        await thread.sendSystemMessageToUser(closeMessage).catch(() => {});
+
+        await sendSystemMessageToUser(db, thread, closeMessage).catch(() => {});
       }
 
-      await thread.close(
+      await closeThread(
+        db,
+        thread,
         thread.scheduled_close_id || "unknown",
         false,
         thread.scheduled_close_silent || undefined,
       );
 
       const logChannel = await getLogChannel();
-      const embed = await thread.getCloseEmbed(thread.scheduled_close_id || "");
+      const embed = await buildCloseEmbed(
+        db,
+        thread,
+        thread.scheduled_close_id || "",
+      );
+
       if (!embed)
         return logChannel.send(
-          `Thread ${thread.id} closed by ${thread.scheduled_close_name}. ${await thread.logUrl()}`,
+          `Thread ${thread.id} closed by ${thread.scheduled_close_name}. ${await getLogUrl(thread)}`,
         );
 
       logChannel.send({
@@ -67,8 +84,8 @@ export default ({ config, commands, db }: ModuleProps) => {
       if (args.cancel || opts.includes("cancel") || opts.includes("c")) {
         // Cancel timed close
         if (thread.scheduled_close_at) {
-          await thread.cancelScheduledClose();
-          thread.postSystemMessage("Cancelled scheduled closing");
+          await cancelScheduledClose(db, thread);
+          postSystemMessage(db, thread, "Cancelled scheduled closing");
         }
 
         return;
@@ -85,28 +102,28 @@ export default ({ config, commands, db }: ModuleProps) => {
           const delay = await getDelayFromArgs(opts);
 
           if (delay !== null) {
-            await thread.scheduleClose(delay, msg.author, silentClose);
+            await scheduleClose(db, thread, delay, msg.author, silentClose);
 
             if (silentClose)
-              thread.postSystemMessage({
+              postSystemMessage(db, thread, {
                 content: `Thread is now scheduled to be closed silently in ${humanizeDelay(delay)}. Use \`${config.prefix}close cancel\` to cancel.`,
               });
             else
-              thread.postSystemMessage({
+              postSystemMessage(db, thread, {
                 content: `Thread is now scheduled to be closed in ${humanizeDelay(delay)}. Use \`${config.prefix}close cancel\` to cancel.`,
               });
 
             return;
           }
         } catch (e: unknown) {
-          thread.postSystemMessage({
+          postSystemMessage(db, thread, {
             content: `${e}`,
           });
 
           return;
         }
 
-        thread.postSystemMessage({
+        postSystemMessage(db, thread, {
           content:
             "Invalid delay duration given. Expected format example for 10 days, 11 hours, 2 minutes, and 56 seconds: 10d11h2m56s",
         });
@@ -123,16 +140,22 @@ export default ({ config, commands, db }: ModuleProps) => {
         const closeMessage = readMultilineConfigValue(
           config.closeMessage || "Closed",
         );
-        await thread.sendSystemMessageToUser(closeMessage).catch(() => {});
+        await sendSystemMessageToUser(db, thread, closeMessage).catch(() => {});
       }
 
-      await thread.close(msg.author.id, suppressSystemMessages, silentClose);
+      await closeThread(
+        db,
+        thread,
+        msg.author.id,
+        suppressSystemMessages,
+        silentClose,
+      );
 
-      const embed = await thread.getCloseEmbed(msg.author.id);
+      const embed = await buildCloseEmbed(db, thread, msg.author.id);
       const logChannel = await getLogChannel();
       if (!embed) {
         logChannel.send(
-          `Thread #${thread.id} closed by ${msg.author.id}. ${await thread.logUrl()}`,
+          `Thread #${thread.id} closed by ${msg.author.id}. ${await getLogUrl(thread)}`,
         );
         return;
       }
@@ -157,7 +180,7 @@ export default ({ config, commands, db }: ModuleProps) => {
       const opts = (args.opts as Array<string>) || [];
 
       const finishingMessage =
-        (await snippets.get("else"))?.body ||
+        (await snippets.getSnippet(db, "else"))?.body ||
         "Is there anything else I can help you with? If not, this ticket will be closed shortly.";
 
       try {

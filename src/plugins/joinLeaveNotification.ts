@@ -1,7 +1,9 @@
 import { Events } from "discord.js";
-import * as threads from "../data/threads";
+import * as threads from "../repositories/threads";
 import type { ModuleProps } from "../plugins";
 import * as utils from "../utils";
+import { postSystemMessage } from "../thread";
+import type Thread from "../data/Thread";
 
 export default ({ bot, config, db }: ModuleProps) => {
   const leaveIgnoreIDs: string[] = [];
@@ -12,9 +14,14 @@ export default ({ bot, config, db }: ModuleProps) => {
       const mainGuilds = utils.getMainGuilds();
       if (!mainGuilds.find((gld) => gld.id === guild.id)) return;
 
-      const thread = await threads.findOpenThreadByUserId(db, user.id);
+      const thread = (
+        await threads.findOpenThreadByUserID(db, user.id)
+      )[0] as Thread;
+
       if (thread != null) {
-        await thread.postSystemMessage(
+        await postSystemMessage(
+          db,
+          thread,
           `***The user joined the ${guild.name} server.***`,
         );
       }
@@ -29,12 +36,17 @@ export default ({ bot, config, db }: ModuleProps) => {
 
       // Ensure that possible ban events are caught before sending message (race condition)
       setTimeout(async () => {
-        const thread = await threads.findOpenThreadByUserId(db, user.id);
+        const thread = (
+          await threads.findOpenThreadByUserID(db, user.id)
+        )[0] as Thread;
+
         if (thread != null) {
           if (leaveIgnoreIDs.includes(user.id)) {
             leaveIgnoreIDs.splice(leaveIgnoreIDs.indexOf(user.id), 1);
           } else {
-            await thread.postSystemMessage(
+            await postSystemMessage(
+              db,
+              thread,
               `***The user left the ${guild.name} server.***`,
             );
           }
@@ -49,9 +61,14 @@ export default ({ bot, config, db }: ModuleProps) => {
       const mainGuilds = utils.getMainGuilds();
       if (!mainGuilds.find((gld) => gld.id === guild.id)) return;
 
-      const thread = await threads.findOpenThreadByUserId(db, user.id);
+      const thread = (
+        await threads.findOpenThreadByUserID(db, user.id)
+      )[0] as Thread;
+
       if (thread != null) {
-        await thread.postSystemMessage(
+        await postSystemMessage(
+          db,
+          thread,
           `***The user was banned from the ${guild.name} server.***`,
         );
         leaveIgnoreIDs.push(user.id);
@@ -65,9 +82,14 @@ export default ({ bot, config, db }: ModuleProps) => {
       const mainGuilds = utils.getMainGuilds();
       if (!mainGuilds.find((gld) => gld.id === guild.id)) return;
 
-      const thread = await threads.findOpenThreadByUserId(db, user.id);
+      const thread = (
+        await threads.findOpenThreadByUserID(db, user.id)
+      )[0] as Thread;
+
       if (thread != null) {
-        await thread.postSystemMessage(
+        await postSystemMessage(
+          db,
+          thread,
           `***The user was unbanned from the ${guild.name} server.***`,
         );
       }

@@ -1,7 +1,13 @@
 import type { ModuleProps } from "../plugins";
+import {
+  deleteStaffReply,
+  editStaffReply,
+  findThreadMessageByMessageNumber,
+  replyToUser,
+} from "../thread";
 import * as utils from "../utils";
 
-export default ({ config, commands }: ModuleProps) => {
+export default ({ db, config, commands }: ModuleProps) => {
   commands.addInboxThreadCommand(
     "reply",
     "[text$]",
@@ -13,7 +19,9 @@ export default ({ config, commands }: ModuleProps) => {
         return;
       }
 
-      const replied = await thread.replyToUser(
+      const replied = await replyToUser(
+        db,
+        thread,
         msg.member,
         (args.text as string) || "",
         msg.attachments,
@@ -38,7 +46,9 @@ export default ({ config, commands }: ModuleProps) => {
         return;
       }
 
-      const replied = await thread.replyToUser(
+      const replied = await replyToUser(
+        db,
+        thread,
         msg.member,
         (args.text as string) || "",
         msg.attachments,
@@ -64,7 +74,9 @@ export default ({ config, commands }: ModuleProps) => {
         return;
       }
 
-      const replied = await thread.replyToUser(
+      const replied = await replyToUser(
+        db,
+        thread,
         msg.member,
         (args.text as string) || "",
         msg.attachments,
@@ -85,7 +97,9 @@ export default ({ config, commands }: ModuleProps) => {
       async (msg, args, thread) => {
         if (!thread) return;
 
-        const threadMessage = await thread.findThreadMessageByMessageNumber(
+        const threadMessage = await findThreadMessageByMessageNumber(
+          db,
+          thread,
           args.messageNumber as number,
         );
 
@@ -99,7 +113,9 @@ export default ({ config, commands }: ModuleProps) => {
           return;
         }
 
-        const edited = await thread.editStaffReply(
+        const edited = await editStaffReply(
+          db,
+          thread,
           threadMessage,
           args.text as string,
           false,
@@ -119,7 +135,9 @@ export default ({ config, commands }: ModuleProps) => {
       async (msg, args, thread) => {
         if (!thread) return;
 
-        const threadMessage = await thread.findThreadMessageByMessageNumber(
+        const threadMessage = await findThreadMessageByMessageNumber(
+          db,
+          thread,
           args.messageNumber as number,
         );
         if (!threadMessage) {
@@ -132,7 +150,7 @@ export default ({ config, commands }: ModuleProps) => {
           return;
         }
 
-        await thread.deleteStaffReply(threadMessage, false);
+        await deleteStaffReply(db, thread, threadMessage, false);
         msg.delete().catch(utils.noop);
       },
       {

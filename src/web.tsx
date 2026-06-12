@@ -6,13 +6,14 @@ import { secureHeaders } from "hono/secure-headers";
 import { getMimeType } from "hono/utils/mime";
 import { getLocalAttachmentPath } from "./data/attachments";
 import { formatLog } from "./data/logs";
-import Thread, { type ThreadProps } from "./data/Thread";
-import ThreadMessage, { type ThreadMessageProps } from "./data/ThreadMessage";
+import type { Thread } from "./data/Thread";
+import type { ThreadMessage } from "./data/ThreadMessage";
 import { useDb } from "./db";
 import { getMessagesInThread } from "./repositories/threadMessages";
 import { findThreadByID } from "./repositories/threads";
-import academy from "./web/academy";
+import academy from "./academy";
 import { Thread as ThreadView } from "./web/view";
+import config from "./config";
 
 const app = new Hono();
 
@@ -21,7 +22,7 @@ const db = useDb();
 app.use(cors());
 app.use(secureHeaders());
 
-app.route("/academy/api", academy);
+app.route("/academy", academy);
 
 app.get("/style.css", async (_) => {
   const cssFile = await readFile("./src/web/style.css");
@@ -35,16 +36,12 @@ app.get("/style.css", async (_) => {
 
 app.get("/logs/:id", async (c) => {
   const { id } = c.req.param();
-  const thread = new Thread(
-    db,
-    (await findThreadByID(db, id))[0] as ThreadProps,
-  );
+  const thread =
+    (await findThreadByID(db, id))[0] as Thread
 
   if (!thread) return new Response("Thread not found", { status: 404 });
 
-  const messages = (await getMessagesInThread(db, id)).map(
-    (tm: ThreadMessageProps) => new ThreadMessage(tm),
-  );
+  const messages = (await getMessagesInThread(db, id)) as ThreadMessage[]
 
   const params = new URL(c.req.url).searchParams;
   const simple = params.get("simple") !== null;
@@ -87,4 +84,7 @@ app.get("/attachments/:id/:filename", async (c) => {
   });
 });
 
-export default app;
+export default {
+  ...app,
+  port: config.web.port
+};

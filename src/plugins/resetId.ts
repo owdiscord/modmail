@@ -1,6 +1,10 @@
-import { findOpenThreadByChannelId, resetThreadId } from "../data/threads";
+import {
+  findOpenThreadByChannelID,
+  resetThreadID,
+} from "../repositories/threads";
 import type { ModuleProps } from "../plugins";
 import { postLog } from "../utils";
+import { getThreadChannel, postSystemMessage } from "../thread";
 
 export default ({ db, commands, config }: ModuleProps) => {
   commands.addGlobalCommand(
@@ -13,7 +17,7 @@ export default ({ db, commands, config }: ModuleProps) => {
       },
     ],
     async (msg, args) => {
-      const thread = await findOpenThreadByChannelId(db, msg.channelId);
+      const thread = await findOpenThreadByChannelID(db, msg.channelId);
       if (!thread && !args.id) {
         msg.reply(
           "You aren't in a thread and didn't specify an ID, so I don't know what to do next!",
@@ -21,19 +25,19 @@ export default ({ db, commands, config }: ModuleProps) => {
         return;
       }
 
-      const fromId = thread ? thread.id : (args.id as string);
-      const newId = await resetThreadId(db, fromId);
+      const fromID = thread ? thread.id : (args.id as string);
+      const newID = await resetThreadID(db, fromID);
 
-      const channel = thread ? await thread.getThreadChannel() : msg.channel;
+      const channel = thread ? await getThreadChannel(thread) : msg.channel;
 
       if (!channel.isSendable())
         return postLog(
-          `We reset thread ${fromId} to ${newId}, but could not respond to the original message.`,
+          `We reset thread ${fromID} to ${newID}, but could not respond to the original message.`,
         );
 
-      channel.send(`✓ Thread \`${fromId}\` is now \`${newId}\``);
+      channel.send(`✓ Thread \`${fromID}\` is now \`${newID}\``);
       if (channel.id !== config.logChannel)
-        postLog(`Thread \`${fromId}\` is now \`${newId}\``);
+        postLog(`Thread \`${fromID}\` is now \`${newID}\``);
     },
     {},
   );
@@ -43,7 +47,7 @@ export default ({ db, commands, config }: ModuleProps) => {
     [],
     async (_msg, _args, thread) => {
       if (!thread) return;
-      thread.postSystemMessage(thread.user_id);
+      postSystemMessage(db, thread, thread.user_id);
     },
     { allowSuspended: true },
   );

@@ -2,8 +2,15 @@ import type { User } from "discord.js";
 import type { RowDataPacket } from "mysql2";
 import { v4 } from "uuid";
 import { ThreadMessageType, ThreadStatus } from "../data/constants";
-import type { ThreadProps, Thread as ThreadX } from "../data/Thread";
+import {
+  createNewThreadForUser,
+  type NewThreadParams,
+  type ThreadProps,
+  type Thread as ThreadX,
+} from "../data/Thread";
 import type { DbQuery, MutationResult } from "../db";
+import { threadCreationQueue } from "../queue";
+import type { ThreadMessage } from "../data/ThreadMessage";
 
 export type Thread = ThreadX;
 export type ThreadRow = ThreadProps & RowDataPacket;
@@ -47,8 +54,11 @@ export async function create(
   data: Omit<ThreadProps, "id">,
 ): Promise<string> {
   const id = v4();
+  const number =
+    (await db`SELECT COALESCE(COUNT(*) + 1, 0) number FROM threads`)[0]
+      ?.number || 0;
 
-  await db`INSERT INTO threads
+  await db.mutation`INSERT INTO threads
   (
     id,
     status,
@@ -64,7 +74,6 @@ export async function create(
     roles,
     server_join,
     created_at,
-    thread_number,
     is_legacy
   ) VALUES (
     ${id},
@@ -73,7 +82,7 @@ export async function create(
     ${data.user_name},
     ${data.channel_id},
     ${data.next_message_number},
-    ${data.thread_number},
+    ${number},
     ${data.alert_ids},
     ${data.log_storage_type},
     '',
@@ -81,15 +90,14 @@ export async function create(
     ${data.roles ? data.roles.join(",") : ""},
     ${data.server_join},
     ${data.created_at || "now()"},
-    0,
-    null
+    false
   )`;
 
   return id;
 }
 
 // Set a thread to closed status, reporting the close time and who closed it.
-export async function closeThread(
+export async function markThreadClosed(
   sql: DbQuery,
   thread_id: string,
   closing_id: string,
@@ -252,14 +260,14 @@ export async function findByChannelID(
   return await db`SELECT * FROM threads WHERE channel_id = ${channelId}`;
 }
 
-export async function findOpenThreadByChannelId(
+export async function findOpenThreadByChannelID(
   db: DbQuery,
   channelId: string,
 ): Promise<Thread | null> {
   const thread =
     await db`SELECT * FROM threads WHERE channel_id = ${channelId} AND status = ${ThreadStatus.Open}`;
 
-  if (thread?.[0]) return new Thread(db, thread[0]);
+  if (thread?.[0]) return thread[0] as Thread;
 
   return null;
 }
@@ -271,7 +279,7 @@ export async function findSuspendedThreadByChannelId(
   const thread =
     await db`SELECT * FROM threads WHERE channel_id = ${channelId} AND status = ${ThreadStatus.Suspended}`;
 
-  if (thread?.[0]) return new Thread(db, thread[0]);
+  if (thread?.[0]) return thread[0] as Thread;
 
   return null;
 }
@@ -282,13 +290,10 @@ export async function getClosedThreadsByUserId(
   page = 1,
   limit = 12,
 ): Promise<Thread[]> {
-  const threads =
-    await db`SELECT * FROM threads WHERE user_id = ${userId} AND status = ${ThreadStatus.Closed} ORDER BY created_at DESC LIMIT ${limit} OFFSET ${(page - 1) * limit}`;
-
-  if (threads)
-    return threads.map((thread: ThreadProps) => new Thread(db, thread));
-
-  throw "[getClosedThreadsByUserId] could not retrieve threads";
+  return (await db.raw(
+    `SELECT * FROM threads WHERE user_id = ? AND status = ? ORDER BY created_at DESC LIMIT ${limit} OFFSET ${(page - 1) * limit}`,
+    [userId, ThreadStatus.Closed],
+  )) as Thread[];
 }
 
 export async function getClosedThreadCountByUserId(
@@ -296,10 +301,10 @@ export async function getClosedThreadCountByUserId(
   user_id: string,
   created_time: Date,
 ): Promise<number> {
-  const [{ thread_count }] =
+  const result =
     await db`SELECT COUNT(id) AS thread_count FROM threads WHERE status = ${ThreadStatus.Closed} AND user_id = ${user_id} AND created_at <= ${created_time}`;
 
-  return thread_count;
+  return result && result[0]?.thread_count ? result[0].thread_count : 0;
 }
 
 export async function findOrCreateThreadForUser(
@@ -307,44 +312,39 @@ export async function findOrCreateThreadForUser(
   user: User,
   opts: NewThreadParams,
 ): Promise<Thread | null> {
-  const existingThread = await findOpenThreadByUserId(db, user.id);
-  if (existingThread) return existingThread;
+  const existingThread = await findOpenThreadByUserID(db, user.id);
+  if (existingThread[0]) return existingThread[0] as Thread;
 
-  return createNewThreadForUser(db, user, opts);
+  return createNewThreadForUser(db, threadCreationQueue, user, opts);
 }
 
 export async function getThreadsThatShouldBeClosed(
   db: DbQuery,
 ): Promise<Array<Thread>> {
-  const threads =
-    await db`SELECT * FROM threads WHERE status = ${ThreadStatus.Open} AND scheduled_close_at IS NOT NULL AND scheduled_close_at <= now()`;
-
-  return threads.map((thread: ThreadProps) => new Thread(db, thread));
+  try {
+    return (await db`SELECT * FROM threads WHERE status = ${ThreadStatus.Open} AND scheduled_close_at IS NOT NULL AND scheduled_close_at <= now()`) as Thread[];
+  } catch (e) {
+    throw new Error(
+      `[getThreadsThatShouldBeClosed] failed to get threads that should be closed: ${e}`,
+    );
+  }
 }
 
 export async function getThreadsThatShouldBeSuspended(db: DbQuery) {
   try {
-    const threads =
-      await db`SELECT * FROM threads WHERE status = ${ThreadStatus.Open} AND scheduled_suspend_at IS NOT NULL AND scheduled_suspend_at <= now()`;
-
-    return threads.map((thread: ThreadProps) => new Thread(db, thread));
+    return (await db`SELECT * FROM threads WHERE status = ${ThreadStatus.Open} AND scheduled_suspend_at IS NOT NULL AND scheduled_suspend_at <= now()`) as Thread[];
   } catch (e) {
     throw new Error(
-      `[getAllOpenThreads@threads.ts:516] failed to get threads that should be suspended: ${e}`,
+      `[getThreadsThatShouldBeSuspended] failed to get threads that should be suspended: ${e}`,
     );
   }
 }
 
 export async function getAllOpenThreads(db: DbQuery): Promise<Thread[]> {
   try {
-    const threads =
-      await db`SELECT * FROM threads WHERE status = ${ThreadStatus.Open}`;
-
-    return threads.map((thread: ThreadProps) => new Thread(db, thread));
+    return (await db`SELECT * FROM threads WHERE status = ${ThreadStatus.Open}`) as Thread[];
   } catch (e) {
-    throw new Error(
-      `[getAllOpenThreads@threads.ts:531] failed to get open threads: ${e}`,
-    );
+    throw new Error(`[getAllOpenThreads] failed to get open threads: ${e}`);
   }
 }
 
@@ -352,12 +352,10 @@ export async function findThreadMessageByDMMessageId(
   db: DbQuery,
   dmMessageId: string,
 ): Promise<ThreadMessage | null> {
-  const message =
+  const result =
     await db`SELECT * FROM thread_messages WHERE dm_message_id = ${dmMessageId}`;
 
-  if (message?.[0]) return new ThreadMessage(message[0]);
-
-  return null;
+  return result[0] ? (result[0] as ThreadMessage) : null;
 }
 
 export async function findThreadLogByChannelID(
@@ -367,7 +365,7 @@ export async function findThreadLogByChannelID(
   const thread =
     await db`SELECT id, user_name FROM threads WHERE channel_id = ${channel_id}`;
 
-  if (thread && thread.length === 1)
+  if (thread[0])
     return { thread_id: thread[0].id, channel_id, name: thread[0].user_name };
 
   throw "could not find a log for that thread";
@@ -379,44 +377,37 @@ export async function getNextThreadMessageNumber(
 ): Promise<number> {
   const rows =
     await db`SELECT coalesce(MAX(message_number) + 1, 1) as count FROM thread_messages WHERE thread_id = ${thread_id} AND message_type = ${ThreadMessageType.ToUser}`;
-  if (rows && rows.length === 1) return rows[0].count;
 
-  return 1;
+  return rows[0] ? rows[0].count : 1;
 }
 
 export async function getThreadByNumber(
   db: DbQuery,
   thread_number: number,
 ): Promise<Thread | null> {
-  const threads =
+  const result =
     await db`SELECT * FROM threads WHERE thread_number = ${thread_number} LIMIT 1`;
 
-  if (threads && threads.length === 1) return new Thread(db, threads[0]);
-
-  return null;
+  return result[0] ? (result[0] as Thread) : null;
 }
 
 export async function getThreadById(
   db: DbQuery,
   id: string,
 ): Promise<Thread | null> {
-  const threads = await db`SELECT * FROM threads WHERE id = ${id} LIMIT 1`;
+  const result = await db`SELECT * FROM threads WHERE id = ${id} LIMIT 1`;
 
-  if (threads && threads.length === 1) return new Thread(db, threads[0]);
-
-  return null;
+  return result[0] ? (result[0] as Thread) : null;
 }
 
 export async function getLastClosedThreadByUser(
   db: DbQuery,
   user_id: string,
 ): Promise<Thread | null> {
-  const threads =
+  const result =
     await db`SELECT * FROM threads WHERE user_id = ${user_id} AND status = ${ThreadStatus.Closed} ORDER BY created_at DESC LIMIT 1`;
 
-  if (threads && threads.length === 1) return new Thread(db, threads[0]);
-
-  return null;
+  return result[0] ? (result[0] as Thread) : null;
 }
 
 export type ThreadMessageStats = {
@@ -428,13 +419,13 @@ export type ThreadMessageStats = {
 export async function getThreadMessageStats(
   db: DbQuery,
   thread_id: string,
-): Promise<ThreadMessageStats | null> {
+): Promise<ThreadMessageStats> {
   const result = await db<
     RowDataPacket & { message_type: ThreadMessageType; msg_count: number }
   >`
 SELECT message_type, COUNT(*) msg_count FROM thread_messages WHERE thread_id = ${thread_id} GROUP BY message_type ORDER BY msg_count;`;
 
-  if (result && result.length > 1) {
+  if (result) {
     const received =
       result.find((r) => r.message_type === ThreadMessageType.FromUser)
         ?.msg_count || 0;
@@ -452,7 +443,7 @@ SELECT message_type, COUNT(*) msg_count FROM thread_messages WHERE thread_id = $
     };
   }
 
-  return null;
+  return { received: 0, replies: 0, internal: 0 };
 }
 
 export interface StaffReplyData {

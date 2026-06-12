@@ -22,7 +22,7 @@ export interface DbQuery {
     ...values: Primitive[]
   ): Promise<MutationResult>;
   transaction<T>(fn: (tx: TxQuery) => Promise<T>): Promise<T>;
-  raw<T extends RowDataPacket>(sql: string, values: Primitive[]): Promise<T>;
+  raw<T extends RowDataPacket>(sql: string, values: Primitive[]): Promise<T[]>;
   pool: Pool;
 }
 
@@ -35,6 +35,7 @@ interface TxQuery {
     strings: TemplateStringsArray,
     ...values: Primitive[]
   ): Promise<MutationResult>;
+  raw<T extends RowDataPacket>(sql: string, values: Primitive[]): Promise<T[]>;
 }
 
 // Turn a string template into a mysql2 compatible combination of sql string and param array.
@@ -72,6 +73,9 @@ function createTxQuery(conn: PoolConnection): TxQuery {
 
     return result;
   };
+
+  tx.raw = <T extends RowDataPacket>(sql: string, values: Primitive[]) =>
+    conn.query<T[]>(sql, values).then(([rows]) => rows);
 
   return tx;
 }
@@ -118,7 +122,7 @@ function createDb(pool: Pool): DbQuery {
   };
 
   query.raw = <T extends RowDataPacket>(sql: string, values: Primitive[]) =>
-    pool.execute<T[]>(sql, values).then(([rows]) => rows);
+    pool.query<T[]>(sql, values).then(([rows]) => rows);
 
   query.pool = pool;
 
@@ -141,6 +145,21 @@ export function useDb(): DbQuery {
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
+    multipleStatements: true,
+    typeCast(field, next) {
+      if (
+        field.table === "thread_messages" &&
+        (field.name === "attachments" || field.name === "small_attachments")
+      )
+        return JSON.parse(field.string() || "[]") || null;
+      if (
+        (field.table === "threads" || field.table === "thread_messages") &&
+        field.name === "metadata"
+      )
+        return JSON.parse(field.string() || "{}") || {};
+
+      return next();
+    },
   });
 
   db = createDb(pool);

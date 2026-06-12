@@ -23,16 +23,4 @@ const bot = new Client({
   partials: [Partials.Channel],
 });
 
-// DEBUG: Intercept REST requests to log fully
-bot.rest.on("restDebug", (info) => console.log("[REST Debug]", info));
-bot.rest.on("response", async (req, res) => {
-  console.log("[REST Response]", {
-    method: req.method,
-    path: req.path,
-    status: res.status,
-    reqBody: req.data,
-    resBody: await res.text(),
-  });
-});
-
 export default bot;

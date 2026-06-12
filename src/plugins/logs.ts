@@ -10,7 +10,7 @@ import {
 } from "discord.js";
 import { ThreadStatus } from "../data/constants";
 import { getLogUrl } from "../data/logs";
-import type Thread from "../data/Thread";
+import { type Thread } from "../data/Thread";
 import type { DbQuery } from "../db";
 import logger from "../logger";
 import type { ModuleProps } from "../plugins";
@@ -91,9 +91,8 @@ export default ({ db, commands }: ModuleProps) => {
     const threadId = args.threadId || _thread?.id;
     if (!threadId) return;
 
-    const thread =
-      (await threads.findThreadByID(db, threadId as string)) ||
-      (await threads.findThreadByNumber(db, threadId as number));
+    const thread = ((await threads.findThreadByID(db, threadId as string)) ||
+      (await threads.findThreadByNumber(db, threadId as number)))[0] as Thread;
     if (!thread) return;
 
     const threadNumber = await threads.getUserThreadsClosedCount(

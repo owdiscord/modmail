@@ -15,18 +15,29 @@ import type { Logger } from "pino";
 import { type Commands, createCommandManager } from "./commands";
 import config from "./config";
 import * as blocked from "./data/blocked";
-import Thread, { createNewThreadForUser } from "./data/Thread";
+import { type Thread, createNewThreadForUser } from "./data/Thread";
 import { type DbQuery, useDb } from "./db";
 import logger from "./logger";
 import { createPluginProps, loadPlugins } from "./plugins";
 import { handleLogPageChange } from "./plugins/logs";
 import { handleSnippet } from "./plugins/snippets";
-import { messageQueue, type SerialQueue } from "./queue";
+import { messageQueue, threadCreationQueue, type SerialQueue } from "./queue";
 import * as threadMessages from "./repositories/threadMessages";
 import * as threads from "./repositories/threads";
 import * as utils from "./utils";
 import { postError } from "./utils";
-import { ThreadMessageType } from "./data/constants";
+import { ThreadMessageType, ThreadStatus } from "./data/constants";
+import {
+  closeThread,
+  formatMessageAsUserReply,
+  postSystemMessage,
+  receiveUserReply,
+  recoverDowntimeMessages,
+  replyToUser,
+  saveChatMessageToLogs,
+  saveCommandMessageToLogs,
+  sendSystemMessageToUser,
+} from "./thread";
 
 const db = useDb();
 
@@ -94,7 +105,7 @@ export async function start(bot: Client) {
     const openThreads = await threads.getAllOpenThreads(db);
     for (const thread of openThreads) {
       try {
-        await thread.recoverDowntimeMessages();
+        await recoverDowntimeMessages(db, thread);
       } catch (err) {
         logger.error(
           { user_id: thread.user_id, err },
@@ -174,7 +185,7 @@ function initialiseListeners(bot: Client, commands: Commands) {
 
     if (channel.guildId || channel.guildId !== utils.getInboxGuild().id) return;
 
-    const thread = await threads.findOpenThreadByChannelId(db, channel.id);
+    const thread = await threads.findOpenThreadByChannelID(db, channel.id);
     if (!thread) return;
 
     logger.info(
@@ -183,10 +194,10 @@ function initialiseListeners(bot: Client, commands: Commands) {
     );
     if (config.closeMessage) {
       const closeMessage = utils.readMultilineConfigValue(config.closeMessage);
-      await thread.sendSystemMessageToUser(closeMessage).catch(() => {});
+      await sendSystemMessageToUser(db, thread, closeMessage).catch(() => {});
     }
 
-    await thread.close("", true);
+    await closeThread(db, thread, "", true);
 
     const logChannel = await utils.getLogChannel();
     logChannel.send(
@@ -262,12 +273,13 @@ async function handleInboxServerMessage(
     (msg.content.startsWith(config.snippetPrefix) ||
       msg.content.startsWith(config.anonSnippetPrefix));
 
-  const threadRow = await threads.findByChannelID(db, msg.channel.id);
-  if (!threadRow?.[0]) return null;
-  const thread = new Thread(db, threadRow[0]);
+  const thread = (
+    await threads.findByChannelID(db, msg.channel.id)
+  )[0] as Thread;
 
   if (isSnippet && thread) {
     await handleSnippet(
+      db,
       msg,
       config,
       thread,
@@ -284,7 +296,7 @@ async function handleInboxServerMessage(
       // Thread-specific command
       const threadErr = await commands.handleCommand(msg, "thread");
       if (threadErr) errors.push(threadErr);
-      thread.saveCommandMessageToLogs(msg);
+      saveCommandMessageToLogs(db, thread, msg);
     }
 
     // Inbox server command (not in a thread)
@@ -309,7 +321,9 @@ async function handleInboxServerMessage(
     // all staff chat messages in thread channels as replies
     if (!author || !utils.isStaff(author)) return;
 
-    const replied = await thread.replyToUser(
+    const replied = await replyToUser(
+      db,
+      thread,
       msg.member,
       msg.content.trim(),
       msg.attachments,
@@ -320,7 +334,7 @@ async function handleInboxServerMessage(
     if (replied) msg.delete();
   } else {
     // Otherwise just save the messages as "chat" in the logs
-    if (thread) thread.saveChatMessageToLogs(msg);
+    if (thread) saveChatMessageToLogs(db, thread, msg);
   }
 }
 
@@ -363,38 +377,43 @@ async function handleUserDM(_bot: Client, msg: Message) {
 
   // Private message handling is queued so e.g. multiple message in quick succession don't result in multiple channels being created
   messageQueue.add(async () => {
-    const thread = findOrCreateThread(db, log, queue, msg);
+    const [thread, isNew] = await findOrCreateThread(
+      db,
+      log,
+      threadCreationQueue,
+      msg,
+    );
 
-    if (thread) {
-      log.debug({
-        thread: thread.id,
-        status: "receiving reply in existing thread",
-      });
-      await thread.receiveUserReply(msg);
+    if (isNew && config.responseMessage) {
+      const responseMessage = utils.readMultilineConfigValue(
+        config.responseMessage,
+      );
 
-      if (createNewThread) {
-        // Send auto-reply to the user
-        if (config.responseMessage) {
-          const responseMessage = utils.readMultilineConfigValue(
-            config.responseMessage,
-          );
+      try {
+        const postToThreadChannel = config.showResponseMessageInInbox;
 
-          try {
-            const postToThreadChannel = config.showResponseMessageInInbox;
+        await sendSystemMessageToUser(db, thread, responseMessage, {
+          postToThreadChannel,
+        });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : err;
 
-            await thread.sendSystemMessageToUser(responseMessage, {
-              postToThreadChannel,
-            });
-          } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : err;
-
-            await thread.postSystemMessage(
-              `**NOTE:** Could not send auto-response to the user. The error given was: \`${message}\``,
-            );
-          }
-        }
+        await postSystemMessage(
+          db,
+          thread,
+          `**NOTE:** Could not send auto-response to the user. The error given was: \`${message}\``,
+        );
       }
+
+      return;
     }
+
+    log.debug({
+      thread: thread.id,
+      status: "receiving reply in existing thread",
+    });
+
+    await receiveUserReply(db, thread, msg);
   });
 }
 
@@ -403,9 +422,9 @@ async function findOrCreateThread(
   log: Logger,
   queue: SerialQueue,
   msg: Message,
-): Promise<Thread> {
+): Promise<[Thread, boolean]> {
   const threadRow = await threads.findOpenThreadByUserID(db, msg.author.id);
-  if (threadRow[0]) return new Thread(db, threadRow[0]);
+  if (threadRow[0]) return [threadRow[0] as Thread, false];
 
   const newThread = await createNewThreadForUser(db, queue, msg.author, {
     quiet: false,
@@ -423,7 +442,7 @@ async function findOrCreateThread(
     status: "receiving reply in new thread",
   });
 
-  if (newThread) return newThread;
+  if (newThread) return [newThread, true];
 
   throw "could not find or create a new thread";
 }
@@ -446,10 +465,10 @@ async function handleMessageEdit(
   );
   if (!threadMessage) return;
 
-  const thread = await threads.findById(db, threadMessage.thread_id);
+  const thread = (await threads.findThreadByID(db, threadMessage.thread_id))[0];
   if (!thread) return;
 
-  if (thread.isClosed()) return;
+  if (thread.status === ThreadStatus.Closed) return;
 
   // FIXME: There is a small bug here. When we don't have the old message cached (i.e. when we use threadMessage.body as oldContent),
   //        multiple edits of the same message will show the unedited original content as the "before" version in the logs.
@@ -471,7 +490,7 @@ async function handleMessageEdit(
 
     const threadMessageWithEdit = structuredClone(threadMessage);
     threadMessageWithEdit.body = newContent;
-    const formatted = threadMessageWithEdit.formatAsUserReply();
+    const formatted = formatMessageAsUserReply(threadMessageWithEdit);
 
     try {
       const channel = await bot.channels.fetch(thread.channel_id);
@@ -496,8 +515,13 @@ async function handleMessageEdit(
   }
 
   if (threadMessage.message_type === ThreadMessageType.Chat) {
-    const _message = await msg.fetch();
-    threadMessages.updateMessageContent(db, thread.id, msg.id, msg.content);
+    const message = await msg.fetch();
+    threadMessages.updateMessageContent(
+      db,
+      thread.id,
+      message.id,
+      message.content,
+    );
   }
 }
 
@@ -517,10 +541,10 @@ async function handleMessageDelete(
   );
   if (!threadMessage) return;
 
-  const thread = await threads.findById(db, threadMessage.thread_id);
+  const thread = await threads.findThreadByID(db, threadMessage.thread_id);
   if (!thread) return;
 
-  if (thread.isClosed()) {
+  if (thread[0]?.status === ThreadStatus.Closed) {
     return;
   }
 
@@ -543,7 +567,7 @@ async function handleMessageDelete(
 
   // If the deleted message was staff chatter in the thread channel, also delete it from the logs
   if (threadMessage.message_type === ThreadMessageType.Chat)
-    threadMessages.deleteMessage(db, thread.id, msg.id);
+    threadMessages.deleteMessage(db, thread[0]?.id || "", msg.id);
 }
 
 async function handleInteractionCreate(bot: Client, interaction: Interaction) {

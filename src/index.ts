@@ -1,5 +1,5 @@
 import { execSync } from "node:child_process";
-import fs, { readFileSync } from "node:fs";
+import fs from "node:fs";
 import path from "node:path";
 import { serve } from "@hono/node-server";
 import { version as djsVersion } from "discord.js";
@@ -11,6 +11,7 @@ import { start } from "./main";
 import { migrateAllUp } from "./migrate";
 import { PluginInstallationError } from "./PluginInstallationError";
 import web from "./web";
+import config from "./config";
 
 const nodeVersion = process.versions.node.split(".").map(parseInt) as [
   number,
@@ -42,8 +43,9 @@ console.log(
 // Verify node modules have been installed
 
 try {
-  fs.accessSync(path.join(__dirname, "..", "node_modules"));
-} catch (_e) {
+  fs.accessSync(path.join(import.meta.dirname, "..", "node_modules"));
+} catch (e) {
+  console.error(e);
   console.error(
     'Please run "pnpm install --frozen-lockfile" before starting the bot',
   );
@@ -109,40 +111,18 @@ function errorHandler(err: Error & { code?: string }) {
 process.on("uncaughtException", errorHandler);
 process.on("unhandledRejection", errorHandler);
 
-const packageJson = JSON.parse(readFileSync("./package.json", "utf-8"));
-const modules = Object.keys(packageJson.dependencies);
-modules.forEach((mod) => {
-  try {
-    fs.accessSync(path.join(__dirname, "..", "node_modules", mod));
-  } catch (_e) {
-    console.error(
-      `Please run "pnpm install --frozen-lockfile" again! Package "${mod}" is missing.`,
-    );
-    process.exit(1);
-  }
-});
-
-/*
- * DEBUG: Override the global fetch object
- **/
-const originalFetch = globalThis.fetch;
-globalThis.fetch = Object.assign(
-  async (
-    url: Parameters<typeof fetch>[0],
-    options?: Parameters<typeof fetch>[1],
-  ) => {
-    if (url.toString().includes("discord") && options?.body) {
-      console.log("[Discord Request]", url);
-      try {
-        console.log(JSON.parse(options.body as string));
-      } catch {
-        console.log(options.body);
-      }
-    }
-    return originalFetch(url, options as RequestInit);
-  },
-  originalFetch,
-);
+// const packageJson = JSON.parse(readFileSync("./package.json", "utf-8"));
+// const modules = Object.keys(packageJson.dependencies);
+// modules.forEach((mod) => {
+//   try {
+//     fs.accessSync(path.join(__dirname, "..", "node_modules", mod));
+//   } catch (_e) {
+//     console.error(
+//       `Please run "pnpm install --frozen-lockfile" again! Package "${mod}" s missing.`,
+//     );
+//     process.exit(1);
+//   }
+// });
 
 (async () => {
   await migrateAllUp();
@@ -153,5 +133,6 @@ globalThis.fetch = Object.assign(
   start(bot);
 
   // Run the webserver
+  logger.info(`Starting webserver on :${config.web.port}`);
   serve(web);
 })();

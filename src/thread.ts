@@ -25,7 +25,7 @@ import {
 import humanizeDuration from "humanize-duration";
 import bot from "./bot";
 import config from "./config";
-import { ThreadMessageType } from "./data/constants";
+import { ThreadMessageType, ThreadStatus } from "./data/constants";
 import { getModeratorThreadDisplayRoleName } from "./data/displayRoles";
 import { getLogUrl } from "./data/logs";
 import type { ThreadMessage } from "./data/ThreadMessage";
@@ -37,17 +37,27 @@ import {
   getRegisteredUsername,
   getStaffUsername,
 } from "./repositories/registration";
-import { all as allSnippets, type Snippet } from "./repositories/snippets";
+import {
+  allSnippets as allSnippets,
+  type Snippet,
+} from "./repositories/snippets";
 import * as threadMessages from "./repositories/threadMessages";
 import {
+  alertUserForThreadReply,
   cancelScheduledClosure,
+  cancelScheduledSuspension,
   clearThreadAlerts,
   getLastClosedThreadByUser,
   getNextThreadMessageNumber,
   getThreadMessageStats,
   getThreadStaffReplyCounts,
   getUserThreadsClosedCount,
-  closeThread as markThreadClosed,
+  markThreadClosed,
+  removeThreadReplyAlert,
+  reOpenThread,
+  scheduleThreadClosure,
+  scheduleThreadSuspension,
+  suspendThread,
   type StaffReplyData,
   type Thread,
 } from "./repositories/threads";
@@ -73,6 +83,9 @@ import { saveAttachment } from "./data/attachments";
 import { callAfterThreadCloseScheduleCanceledHooks } from "./hooks/afterThreadCloseScheduleCanceled";
 import { callBeforeNewMessageReceivedHooks } from "./hooks/beforeNewMessageReceived";
 import { callAfterNewMessageReceivedHooks } from "./hooks/afterNewMessageReceived";
+import { isBlocked } from "./data/blocked";
+import { callAfterThreadCloseHooks } from "./hooks/afterThreadClose";
+import { callAfterThreadCloseScheduledHooks } from "./hooks/afterThreadCloseScheduled";
 
 async function postToThreadChannel(
   db: DbQuery,
@@ -318,7 +331,9 @@ export async function replyToUser(
   }
 
   const dmMessage = await user.send(dmContent).catch(async (err) => {
-    await threadMessage.deleteThread(db);
+    if (!threadMessage.id) return;
+
+    await threadMessages.deleteThreadMessage(db, threadMessage.id);
     await postSystemMessage(
       db,
       thread,
@@ -340,7 +355,7 @@ export async function replyToUser(
     threadMessage.inbox_message_id = inboxMessage.id;
   }
 
-  await threadMessage.saveToDb(db);
+  await threadMessages.create(db, threadMessage);
 
   // Interrupt scheduled closing, if in progress
   if (thread.scheduled_close_at) {
@@ -355,7 +370,7 @@ export async function replyToUser(
   return true;
 }
 
-async function receiveUserReply(
+export async function receiveUserReply(
   db: DbQuery,
   thread: Thread,
   message: Message,
@@ -493,7 +508,7 @@ async function receiveUserReply(
     messageContent = `\n${messageContent}`;
 
   // Save DB entry
-  const threadMessage = new ThreadMessage({
+  const threadMessage: ThreadMessage = {
     inbox_message_id: "",
     thread_id: thread.id,
     message_type: ThreadMessageType.FromUser,
@@ -506,14 +521,18 @@ async function receiveUserReply(
     dm_message_id: message.id,
     dm_channel_id: message.channel.id,
     attachments: attachmentUrls,
-    // small_attachments: smallAttachmentLinks,
+    small_attachments: [],
     metadata: {
       embeds,
     },
-  });
+    message_number: 0,
+    role_name: "",
+    created_at: new Date(),
+    use_legacy_format: false,
+  };
 
   // Show the user reply in the inbox thread
-  const inboxContent = threadMessage.formatAsUserReply();
+  const inboxContent = formatMessageAsUserReply(threadMessage);
 
   if (messageReply) {
     inboxContent.reply = {
@@ -532,7 +551,7 @@ async function receiveUserReply(
   // If we successfully delivered the message, this will include the message ID, which we need to save the ThreadMessage.
   if (inboxMessage) threadMessage.inbox_message_id = inboxMessage.id;
 
-  await threadMessage.saveToDb(db);
+  await threadMessages.create(db, threadMessage);
 
   // Call any registered afterNewMessageReceivedHooks
   await callAfterNewMessageReceivedHooks({
@@ -574,7 +593,7 @@ async function receiveUserReply(
   }
 }
 
-async function postSystemMessage(
+export async function postSystemMessage(
   db: DbQuery,
   thread: Thread,
   message: string | MessageCreateOptions,
@@ -585,20 +604,30 @@ async function postSystemMessage(
   } = {},
 ): Promise<{
   message: Message;
-  // threadMessage: ThreadMessage;
+  threadMessage: ThreadMessage;
 }> {
   message = typeof message === "string" ? { content: message } : message;
 
-  const threadMessage = new ThreadMessage({
+  const threadMessage: ThreadMessage = {
     thread_id: thread.id,
     message_type: ThreadMessageType.System,
-    user_id: undefined,
+    user_id: "",
     user_name: "",
-    body: opts.emptyContent ? "" : message.content,
+    body: opts.emptyContent ? "" : message.content || "",
     is_anonymous: false,
-  });
+    message_number: 0,
+    role_name: "",
+    attachments: [],
+    small_attachments: [],
+    dm_channel_id: "",
+    dm_message_id: "",
+    inbox_message_id: "",
+    created_at: new Date(),
+    metadata: {},
+    use_legacy_format: false,
+  };
 
-  const { content } = threadMessage.formatAsSystem();
+  const { content } = formatMessageAsSystem(threadMessage);
 
   message.content = opts.emptyContent ? "" : content;
 
@@ -612,421 +641,519 @@ async function postSystemMessage(
   const msg = await postToThreadChannel(db, thread, message);
 
   threadMessage.inbox_message_id = msg.id;
-  // const finalThreadMessage = await threadMessage.saveToDb(db);
+  await threadMessages.create(db, threadMessage);
 
   return {
     message: msg,
-    // threadMessage: finalThreadMessage,
+    threadMessage: threadMessage,
   };
 }
-//
-// async addSystemMessageToLogs(text: string): Promise<ThreadMessage> {
-//   const threadMessage = new ThreadMessage({
-//     thread_id: this.id,
-//     message_type: ThreadMessageType.System,
-//     user_name: "",
-//     body: text,
-//     is_anonymous: false,
-//   });
-//
-//   return await threadMessage.saveToDb(this.db);
-// }
-//
-// async sendSystemMessageToUser(
-//   text: string,
-//   opts: {
-//     postToThreadChannel?: boolean;
-//     allowedMentions?: MessageMentionOptions;
-//   } = {},
-// ): Promise<void> {
-//   const user = await bot.users.fetch(this.user_id);
-//   if (!user) throw `user (${this.user_id}) could not be retrieved`;
-//
-//   const threadMessage = new ThreadMessage({
-//     thread_id: this.id,
-//     message_type: ThreadMessageType.SystemToUser,
-//     user_name: "",
-//     body: text,
-//     is_anonymous: false,
-//   });
-//
-//   const dmMessage = await user
-//     .send(threadMessage.formatAsSystemToUserDM())
-//     .catch((e) => {
-//       throw `could not send a dm to the user: ${e}`;
-//     });
-//
-//   if (opts.postToThreadChannel !== false) {
-//     const inboxMessage = threadMessage.formatAsSystemToUserThreadMessage(bot);
-//     inboxMessage.allowedMentions = opts.allowedMentions;
-//
-//     const inboxMsg = await this.postToThreadChannel(inboxMessage);
-//     threadMessage.inbox_message_id = inboxMsg.id;
-//   }
-//
-//   threadMessage.dm_channel_id = dmMessage.channelId;
-//   threadMessage.dm_message_id = dmMessage.id;
-//
-//   await threadMessage.saveToDb(this.db);
-// }
-//
-// async postNonLogMessage(
-//   message: MessageCreateOptions,
-// ): Promise<Message | null> {
-//   return this.postToThreadChannel(message);
-// }
-//
-// async saveChatMessageToLogs(msg: Message): Promise<void> {
-//   const threadMessage = new ThreadMessage({
-//     thread_id: this.id,
-//     message_type: ThreadMessageType.Chat,
-//     user_id: msg.author.id,
-//     user_name: config.useDisplaynames
-//       ? msg.author.globalName || msg.author.username
-//       : msg.author.username,
-//     body: msg.content,
-//     metadata: {
-//       attachments: msg.attachments,
-//     },
-//     is_anonymous: false,
-//     dm_message_id: msg.id,
-//   });
-//
-//   return await threadMessage.saveToDb(this.db);
-// }
-//
-// async saveCommandMessageToLogs(msg: Message) {
-//   const threadMessage = new ThreadMessage({
-//     thread_id: this.id,
-//     message_type: ThreadMessageType.Command,
-//     user_id: msg.author.id,
-//     user_name: config.useDisplaynames
-//       ? msg.author.globalName || msg.author.username
-//       : msg.author.username,
-//     body: msg.content,
-//     dm_message_id: msg.id,
-//     created_at: new Date(),
-//     is_anonymous: false,
-//   });
-//
-//   return await threadMessage.saveToDb(this.db);
-// }
-//
-// async getThreadMessages(): Promise<ThreadMessage[]> {
-//   const rows = await threadMessages.getMessagesInThread(this.db, this.id);
-//   return rows.map((row) => new ThreadMessage(row as ThreadMessageProps));
-// }
-//
-// async getThreadMessageForMessageId(
-//   messageId: string,
-// ): Promise<ThreadMessage> {
-//   const data = await threadMessages.getThreadMessageBySnowflake(
-//     this.db,
-//     this.id,
-//     messageId,
-//   );
-//
-//   if (data && data.length > 0)
-//     return new ThreadMessage(data[0] as ThreadMessageProps);
-//
-//   throw "[getThreadMessageForMessageId@Thread.ts:804] could not get thread message";
-// }
-//
-// async getLatestThreadMessage(): Promise<ThreadMessage> {
-//   const data = await threadMessages.getLatestThreadMessages(this.db, this.id);
-//
-//   if (data && data.length === 1)
-//     return new ThreadMessage(data[0] as ThreadMessageProps);
-//
-//   throw "[getLatestThreadMessage@Thread.ts:827] could not get latest thread message";
-// }
-//
-// async findThreadMessageByMessageNumber(
-//   message_number: number,
-// ): Promise<ThreadMessage> {
-//   const data = await threadMessages.getThreadMessageByNumber(
-//     this.db,
-//     this.id,
-//     message_number,
-//   );
-//
-//   if (data && data.length === 1)
-//     return new ThreadMessage(data[0] as ThreadMessageProps);
-//
-//   throw "[findThreadMessageByMessageNumber@Thread.ts:838] could not get thread message by number";
-// }
-//
-// async function closeThread(
-// db: DbQuery,
-// thread: Thread,
-//   closed_by_id: string,
-//   suppressSystemMessage = false,
-//   silent = false,
-// ): Promise<void> {
-//   const log = logger.child({
-//     msg: `Closing thread ${thread.id}`,
-//     user_id: thread.user_id,
-//     username: thread.user_name,
-//     silent,
-//   });
-//
-//   if (!suppressSystemMessage) {
-//     if (silent) {
-//       await thread.postSystemMessage("Closing thread silently...");
-//     } else {
-//       await thread.postSystemMessage("Closing thread...");
-//     }
-//   }
-//
-//   // Mark thread as closed in the database
-//   await threads.closeThread(db, thread.id, closed_by_id);
-//
-//   // Delete channel
-//   const channel = await bot.channels.fetch(thread.channel_id);
-//   if (channel) {
-//     log.info({ channel: thread.channel_id });
-//     await channel.delete("Thread closed");
-//   }
-//
-//   await callAfterThreadCloseHooks({ threadId: thread.id });
-// }
-//
-// async scheduleClose(
-//   delay_ms: number,
-//   user: User,
-//   silent: boolean,
-// ): Promise<void> {
-//   const closer_id = user.id;
-//   const closer_name = config.useDisplaynames
-//     ? user.globalName || user.username
-//     : user.username;
-//
-//   await threads.scheduleThreadClosure(
-//     this.db,
-//     this.id,
-//     delay_ms * 1000, // Times by 1000 to turn seconds to microseconds, as the query wants.
-//     closer_id,
-//     closer_name,
-//     silent,
-//   );
-//
-//   await callAfterThreadCloseScheduledHooks({ thread: this });
-// }
-//
-async function cancelScheduledClose(
+
+export async function addSystemMessageToLogs(
+  db: DbQuery,
+  thread_id: string,
+  text: string,
+): Promise<ThreadMessage> {
+  const threadMessage: ThreadMessage = {
+    thread_id,
+    message_type: ThreadMessageType.System,
+    user_name: "",
+    body: text,
+    is_anonymous: false,
+    message_number: 0,
+    user_id: "",
+    role_name: "",
+    attachments: [],
+    small_attachments: [],
+    dm_channel_id: "",
+    dm_message_id: "",
+    inbox_message_id: "",
+    created_at: new Date(),
+    metadata: {},
+    use_legacy_format: false,
+  };
+
+  await threadMessages.create(db, threadMessage);
+  return threadMessage;
+}
+
+export async function sendSystemMessageToUser(
+  db: DbQuery,
+  thread: Thread,
+  text: string,
+  opts: {
+    postToThreadChannel?: boolean;
+    allowedMentions?: MessageMentionOptions;
+  } = {},
+): Promise<void> {
+  const user = await bot.users.fetch(thread.user_id);
+  if (!user) throw `user (${thread.user_id}) could not be retrieved`;
+
+  const threadMessage: ThreadMessage = {
+    thread_id: thread.id,
+    message_type: ThreadMessageType.SystemToUser,
+    user_name: "",
+    body: text,
+    is_anonymous: false,
+    message_number: 0,
+    user_id: "",
+    role_name: "",
+    attachments: [],
+    small_attachments: [],
+    dm_channel_id: "",
+    dm_message_id: "",
+    inbox_message_id: "",
+    created_at: new Date(),
+    metadata: {},
+    use_legacy_format: false,
+  };
+
+  const dmMessage = await user
+    .send(formatMessageAsSystemToUserDM(threadMessage))
+    .catch((e) => {
+      throw `could not send a dm to the user: ${e}`;
+    });
+
+  if (opts.postToThreadChannel !== false) {
+    const inboxMessage = formatMessageAsSystem(threadMessage);
+    inboxMessage.allowedMentions = opts.allowedMentions;
+
+    const inboxMsg = await postToThreadChannel(db, thread, inboxMessage);
+    threadMessage.inbox_message_id = inboxMsg.id;
+  }
+
+  threadMessage.dm_channel_id = dmMessage.channelId;
+  threadMessage.dm_message_id = dmMessage.id;
+
+  await threadMessages.create(db, threadMessage);
+}
+
+export async function postNonLogMessage(
+  db: DbQuery,
+  thread: Thread,
+  message: MessageCreateOptions,
+): Promise<Message | null> {
+  return postToThreadChannel(db, thread, message);
+}
+
+export async function saveChatMessageToLogs(
+  db: DbQuery,
+  thread: Thread,
+  msg: Message,
+) {
+  const threadMessage: ThreadMessage = {
+    thread_id: thread.id,
+    message_type: ThreadMessageType.Chat,
+    user_id: msg.author.id,
+    user_name: config.useDisplaynames
+      ? msg.author.globalName || msg.author.username
+      : msg.author.username,
+    body: msg.content,
+    metadata: {
+      attachments: msg.attachments,
+    },
+    is_anonymous: false,
+    dm_message_id: msg.id,
+    message_number: 0,
+    role_name: "",
+    attachments: [],
+    small_attachments: [],
+    dm_channel_id: "",
+    inbox_message_id: msg.id,
+    created_at: new Date(),
+    use_legacy_format: false,
+  };
+
+  await threadMessages.create(db, threadMessage);
+}
+
+export async function saveCommandMessageToLogs(
+  db: DbQuery,
+  thread: Thread,
+  msg: Message,
+) {
+  const threadMessage: ThreadMessage = {
+    thread_id: thread.id,
+    message_type: ThreadMessageType.Command,
+    user_id: msg.author.id,
+    user_name: config.useDisplaynames
+      ? msg.author.globalName || msg.author.username
+      : msg.author.username,
+    body: msg.content,
+    dm_message_id: msg.id,
+    created_at: new Date(),
+    is_anonymous: false,
+    message_number: 0,
+    role_name: "",
+    attachments: [],
+    small_attachments: [],
+    dm_channel_id: "",
+    inbox_message_id: "",
+    metadata: {},
+    use_legacy_format: false,
+  };
+  await threadMessages.create(db, threadMessage);
+}
+
+export async function getThreadMessages(
+  db: DbQuery,
+  thread: Thread,
+): Promise<ThreadMessage[]> {
+  return (await threadMessages.getMessagesInThread(
+    db,
+    thread.id,
+  )) as ThreadMessage[];
+}
+
+export async function getThreadMessageForMessageId(
+  db: DbQuery,
+  thread: Thread,
+  messageId: string,
+): Promise<ThreadMessage> {
+  const data = await threadMessages.getThreadMessageBySnowflake(
+    db,
+    thread.id,
+    messageId,
+  );
+
+  if (data && data.length > 0) return data[0] as ThreadMessage;
+
+  throw "[getThreadMessageForMessageId] could not get thread message";
+}
+
+export async function getLatestThreadMessage(
+  db: DbQuery,
+  thread: Thread,
+): Promise<ThreadMessage> {
+  const data = await threadMessages.getLatestThreadMessages(db, thread.id);
+
+  if (data && data.length === 1) return data[0] as ThreadMessage;
+
+  throw "[getLatestThreadMessage] could not get latest thread message";
+}
+
+export async function findThreadMessageByMessageNumber(
+  db: DbQuery,
+  thread: Thread,
+  message_number: number,
+): Promise<ThreadMessage> {
+  const data = await threadMessages.getThreadMessageByNumber(
+    db,
+    thread.id,
+    message_number,
+  );
+
+  if (data && data.length === 1) return data[0] as ThreadMessage;
+
+  throw "[findThreadMessageByMessageNumber] could not get thread message by number";
+}
+
+export async function closeThread(
+  db: DbQuery,
+  thread: Thread,
+  closed_by_id: string,
+  suppressSystemMessage = false,
+  silent = false,
+): Promise<void> {
+  const log = logger.child({
+    msg: `Closing thread ${thread.id}`,
+    user_id: thread.user_id,
+    username: thread.user_name,
+    silent,
+  });
+
+  if (!suppressSystemMessage) {
+    if (silent) {
+      await postSystemMessage(db, thread, "Closing thread silently...");
+    } else {
+      await postSystemMessage(db, thread, "Closing thread...");
+    }
+  }
+
+  await markThreadClosed(db, thread.id, closed_by_id);
+
+  const channel = await bot.channels.fetch(thread.channel_id);
+  if (channel) {
+    log.info({ channel: thread.channel_id });
+    await channel.delete("Thread closed");
+  }
+
+  await callAfterThreadCloseHooks({ threadId: thread.id });
+}
+
+export async function scheduleClose(
+  db: DbQuery,
+  thread: Thread,
+  delay_ms: number,
+  user: User,
+  silent: boolean,
+): Promise<void> {
+  const closer_id = user.id;
+  const closer_name = config.useDisplaynames
+    ? user.globalName || user.username
+    : user.username;
+
+  await scheduleThreadClosure(
+    db,
+    thread.id,
+    delay_ms * 1000,
+    closer_id,
+    closer_name,
+    silent,
+  );
+
+  await callAfterThreadCloseScheduledHooks({ thread });
+}
+
+export async function cancelScheduledClose(
   db: DbQuery,
   thread: Thread,
 ): Promise<void> {
   await cancelScheduledClosure(db, thread.id);
-
   await callAfterThreadCloseScheduleCanceledHooks({ thread });
 }
-//
-// async suspend(): Promise<void> {
-//   await threads.suspendThread(this.db, this.id);
-// }
-//
-// async unsuspend(): Promise<void> {
-//   await threads.reOpenThread(this.db, this.id);
-// }
-//
-// async scheduleSuspend(delay_ms: number, user: User): Promise<void> {
-//   const suspend_id = user.id;
-//   const suspend_name = config.useDisplaynames
-//     ? user.globalName || user.username
-//     : user.username;
-//
-//   const delay_micro = delay_ms * 1000;
-//
-//   await threads.scheduleThreadSuspension(
-//     this.db,
-//     this.id,
-//     delay_micro,
-//     suspend_id,
-//     suspend_name,
-//   );
-// }
-//
-// async cancelScheduledSuspend(): Promise<void> {
-//   await threads.cancelScheduledSuspension(this.db, this.id);
-// }
-//
-// async addAlert(user_id: string): Promise<void> {
-//   await threads.alertUserForThreadReply(this.db, this.id, user_id);
-// }
-//
-// async removeAlert(user_id: string) {
-//   await threads.removeThreadReplyAlert(this.db, this.id, user_id);
-// }
-//
-//
+
+export async function suspend(db: DbQuery, thread: Thread): Promise<void> {
+  await suspendThread(db, thread.id);
+}
+
+export async function unsuspend(db: DbQuery, thread: Thread): Promise<void> {
+  await reOpenThread(db, thread.id);
+}
+
+export async function scheduleSuspend(
+  db: DbQuery,
+  thread: Thread,
+  delay_ms: number,
+  user: User,
+): Promise<void> {
+  const suspend_id = user.id;
+  const suspend_name = config.useDisplaynames
+    ? user.globalName || user.username
+    : user.username;
+
+  await scheduleThreadSuspension(
+    db,
+    thread.id,
+    delay_ms * 1000,
+    suspend_id,
+    suspend_name,
+  );
+}
+
+export async function cancelScheduledSuspend(
+  db: DbQuery,
+  thread: Thread,
+): Promise<void> {
+  await cancelScheduledSuspension(db, thread.id);
+}
+
+export async function addAlert(
+  db: DbQuery,
+  thread: Thread,
+  user_id: string,
+): Promise<void> {
+  await alertUserForThreadReply(db, thread.id, user_id);
+}
+
+export async function removeAlert(
+  db: DbQuery,
+  thread: Thread,
+  user_id: string,
+): Promise<void> {
+  await removeThreadReplyAlert(db, thread.id, user_id);
+}
+
 async function deleteAlerts(db: DbQuery, thread: Thread): Promise<void> {
   logger.info(
     { thread_id: thread.id, username: thread.user_name },
     "removing alerts for thread",
   );
-
   clearThreadAlerts(db, thread.id);
 }
-//
-// async editStaffReply(
-//   threadMessage: ThreadMessage,
-//   newText: string,
-//   quiet = true,
-// ): Promise<boolean> {
-//   const newThreadMessage = new ThreadMessage({
-//     ...threadMessage,
-//     body: newText,
-//   });
-//
-//   const formattedThreadMessage =
-//     newThreadMessage.formatAsStaffReplyThreadMessage();
-//   const formattedDM = newThreadMessage.formatAsStaffReplyDM();
-//
-//   // Same restriction as in replies. Because edits could theoretically change the number of messages a reply takes, we enforce replies
-//   // to fit within 1 message to avoid the headache and issues caused by that.
-//   if (
-//     !messageContentIsWithinMaxLength(formattedDM) ||
-//     !messageContentIsWithinMaxLength(formattedThreadMessage)
-//   ) {
-//     await this.postSystemMessage(
-//       "Edited reply is too long! Make sure the edit is under 2000 characters total, moderator name in the reply included.",
-//     );
-//     return false;
-//   }
-//
-//   const { dm_channel_id, dm_message_id, inbox_message_id } = threadMessage;
-//
-//   // Edit the DM (user side) message
-//   const threadChannel = await bot.channels.fetch(dm_channel_id);
-//
-//   if (threadChannel?.isSendable()) {
-//     const message = await threadChannel.messages.fetch(dm_message_id);
-//     message.edit({
-//       content: formattedDM.content,
-//     });
-//   }
-//
-//   // Edit the inbox (mod side) message
-//   const inboxChannel = await bot.channels.fetch(this.channel_id);
-//   if (inboxChannel?.isSendable()) {
-//     const message = await inboxChannel.messages.fetch(inbox_message_id);
-//     message.edit({
-//       content: formattedThreadMessage.content,
-//     });
-//   }
-//
-//   if (!quiet) {
-//     const editThreadMessage = new ThreadMessage({
-//       thread_id: this.id,
-//       message_type: ThreadMessageType.ReplyEdited,
-//       user_name: "",
-//       body: "",
-//       is_anonymous: false,
-//       metadata: {
-//         originalThreadMessage: threadMessage,
-//         newBody: newText,
-//       },
-//     });
-//
-//     const threadNotification = editThreadMessage.formatAsStaffReplyEdit();
-//     if (!threadNotification) return false;
-//
-//     const inboxMessage = await this.postToThreadChannel(threadNotification);
-//     editThreadMessage.inbox_message_id = inboxMessage.id;
-//     await editThreadMessage.saveToDb(this.db);
-//   }
-//
-//   await threadMessages.editMessageByID(this.db, threadMessage.id, newText);
-//   return true;
-// }
-//
-// async deleteStaffReply(
-//   threadMessage: ThreadMessage,
-//   quiet = false,
-// ): Promise<void> {
-//   const dmChannel = await bot.channels.fetch(threadMessage.dm_channel_id);
-//   if (dmChannel?.isSendable())
-//     dmChannel.messages.delete(threadMessage.dm_message_id);
-//
-//   const inboxChannel = await bot.channels.fetch(this.channel_id);
-//   if (inboxChannel?.isSendable())
-//     inboxChannel.messages.delete(threadMessage.inbox_message_id);
-//
-//   if (!quiet) {
-//     const deletionThreadMessage = new ThreadMessage({
-//       thread_id: this.id,
-//       message_type: ThreadMessageType.ReplyDeleted,
-//       user_name: "",
-//       body: "",
-//       is_anonymous: false,
-//     });
-//
-//     deletionThreadMessage.metadata.originalThreadMessage = threadMessage;
-//
-//     const threadNotification =
-//       deletionThreadMessage.formatAsStaffReplyDeletion();
-//
-//     if (!threadNotification) return;
-//
-//     const inboxMessage = await this.postToThreadChannel(threadNotification);
-//     deletionThreadMessage.inbox_message_id = inboxMessage.id;
-//
-//     await deletionThreadMessage.saveToDb(this.db);
-//   }
-//
-//   await threadMessage.deleteFromDb(this.db);
-// }
-//
-// isClosed() {
-//   return this.status === ThreadStatus.Closed;
-// }
-//
-// async recoverDowntimeMessages() {
-//   if (await isBlocked(this.user_id)) return;
-//
-//   const user = await bot.users.fetch(this.user_id);
-//   const dmChannel = await user.createDM();
-//   if (!dmChannel) return;
-//
-//   const lastMessageId = (await this.getLatestThreadMessage()).dm_message_id;
-//
-//   const messages = await dmChannel.messages.fetch({
-//     limit: 50,
-//     after: lastMessageId,
-//   });
-//
-//   if (!messages || messages.size === 0) return;
-//
-//   const filtered = messages
-//     .values()
-//     .toArray()
-//     .filter((msg) => msg.author.id === this.user_id); // Make sure we're not recovering bot or system messages
-//
-//   if (filtered.length === 0) return;
-//
-//   await this.postSystemMessage(
-//     `📥 Recovering ${filtered.length} message${filtered.length === 1 ? "" : "s"} sent by user during bot downtime!`,
-//   );
-//
-//   let isFirst = true;
-//   for (const msg of filtered.reverse()) {
-//     await this.receiveUserReply(msg, !isFirst);
-//     isFirst = false;
-//   }
-// }
-//
-// public async getDMChannel(): Promise<DMChannel> {
-//   try {
-//     const user = await bot.users.fetch(this.user_id);
-//     return await user.createDM();
-//   } catch (err) {
-//     logger.error({ thread_id: this.id, user_id: this.user_id, err });
-//     throw err;
-//   }
-// }
 
-async function getThreadChannel(thread: Thread): Promise<SendableChannels> {
+export async function editStaffReply(
+  db: DbQuery,
+  thread: Thread,
+  threadMessage: ThreadMessage,
+  newText: string,
+  quiet = true,
+): Promise<boolean> {
+  const newThreadMessage: ThreadMessage = {
+    ...threadMessage,
+    body: newText,
+  };
+
+  const formattedThreadMessage = formatMessageAsStaffReply(newThreadMessage);
+  const formattedDM = formatMessageAsStaffReplyDM(newThreadMessage);
+
+  if (
+    !messageContentIsWithinMaxLength(formattedDM) ||
+    !messageContentIsWithinMaxLength(formattedThreadMessage)
+  ) {
+    await postSystemMessage(
+      db,
+      thread,
+      "Edited reply is too long! Make sure the edit is under 2000 characters total, moderator name in the reply included.",
+    );
+    return false;
+  }
+
+  const { dm_channel_id, dm_message_id, inbox_message_id } = threadMessage;
+
+  const threadChannel = await bot.channels.fetch(dm_channel_id);
+  if (threadChannel?.isSendable()) {
+    const message = await threadChannel.messages.fetch(dm_message_id);
+    message.edit({ content: formattedDM.content });
+  }
+
+  const inboxChannel = await bot.channels.fetch(thread.channel_id);
+  if (inboxChannel?.isSendable()) {
+    const message = await inboxChannel.messages.fetch(inbox_message_id);
+    message.edit({ content: formattedThreadMessage.content });
+  }
+
+  if (!quiet) {
+    const editThreadMessage: ThreadMessage = {
+      thread_id: thread.id,
+      message_type: ThreadMessageType.ReplyEdited,
+      user_name: "",
+      body: "",
+      is_anonymous: false,
+      metadata: {
+        originalThreadMessage: threadMessage,
+        newBody: newText,
+      },
+      message_number: 0,
+      user_id: "",
+      role_name: "",
+      attachments: [],
+      small_attachments: [],
+      dm_channel_id: "",
+      dm_message_id: "",
+      inbox_message_id: "",
+      created_at: new Date(),
+      use_legacy_format: false,
+    };
+
+    const threadNotification = formatMessageAsStaffReplyEdit(editThreadMessage);
+    if (!threadNotification) return false;
+
+    const inboxMessage = await postToThreadChannel(
+      db,
+      thread,
+      threadNotification,
+    );
+    editThreadMessage.inbox_message_id = inboxMessage.id;
+    await threadMessages.create(db, editThreadMessage);
+  }
+
+  await threadMessages.editMessageByID(db, threadMessage.id || 0, newText);
+  return true;
+}
+
+export async function deleteStaffReply(
+  db: DbQuery,
+  thread: Thread,
+  threadMessage: ThreadMessage,
+  quiet = false,
+): Promise<void> {
+  const dmChannel = await bot.channels.fetch(threadMessage.dm_channel_id);
+  if (dmChannel?.isSendable())
+    dmChannel.messages.delete(threadMessage.dm_message_id);
+
+  const inboxChannel = await bot.channels.fetch(thread.channel_id);
+  if (inboxChannel?.isSendable())
+    inboxChannel.messages.delete(threadMessage.inbox_message_id);
+
+  if (!quiet) {
+    const deletionThreadMessage: ThreadMessage = {
+      thread_id: thread.id,
+      message_type: ThreadMessageType.ReplyDeleted,
+      user_name: "",
+      body: "",
+      is_anonymous: false,
+      metadata: {
+        originalThreadMessage: threadMessage,
+      },
+      message_number: 0,
+      user_id: "",
+      role_name: "",
+      attachments: [],
+      small_attachments: [],
+      dm_channel_id: "",
+      dm_message_id: "",
+      inbox_message_id: "",
+      created_at: new Date(),
+      use_legacy_format: false,
+    };
+
+    const threadNotification = formatMessageAsStaffReplyDeletion(
+      deletionThreadMessage,
+    );
+    if (!threadNotification) return;
+
+    const inboxMessage = await postToThreadChannel(
+      db,
+      thread,
+      threadNotification,
+    );
+    deletionThreadMessage.inbox_message_id = inboxMessage.id;
+
+    await threadMessages.create(db, deletionThreadMessage);
+  }
+
+  await threadMessages.deleteThreadMessage(db, threadMessage.id || 0);
+}
+
+export function isClosed(thread: Thread): boolean {
+  return thread.status === ThreadStatus.Closed;
+}
+
+export async function recoverDowntimeMessages(db: DbQuery, thread: Thread) {
+  if (await isBlocked(thread.user_id)) return;
+  const user = await bot.users.fetch(thread.user_id);
+  const dmChannel = await user.createDM();
+  if (!dmChannel) return;
+  const lastMessageID =
+    (await threadMessages.getLatestThreadMessage(db, thread.id))[0]
+      ?.dm_message_id || "";
+  if (lastMessageID === "") return;
+  const messages = await dmChannel.messages.fetch({
+    limit: 50,
+    after: lastMessageID,
+  });
+  if (!messages || messages.size === 0) return;
+  const filtered = messages
+    .values()
+    .toArray()
+    .filter((msg) => msg.author.id === thread.user_id);
+  if (filtered.length === 0) return;
+  postSystemMessage(
+    db,
+    thread,
+    `📥 Recovering ${filtered.length} message${filtered.length === 1 ? "" : "s"} sent by user during bot downtime!`,
+  );
+  let isFirst = true;
+  for (const msg of filtered.reverse()) {
+    await receiveUserReply(db, thread, msg, !isFirst);
+    isFirst = false;
+  }
+}
+
+export async function getDMChannel(thread: Thread): Promise<DMChannel> {
+  try {
+    const user = await bot.users.fetch(thread.user_id);
+    return await user.createDM();
+  } catch (err) {
+    logger.error({ thread_id: thread.id, user_id: thread.user_id, err });
+    throw err;
+  }
+}
+
+export async function getThreadChannel(
+  thread: Thread,
+): Promise<SendableChannels> {
   try {
     const channel = await bot.channels.fetch(thread.channel_id);
 
@@ -1182,7 +1309,7 @@ async function buildExternalGuildHeaderItems(
   return `\n**[${escapeMarkdown(guildData.guild.name)}]** ${headerStr}`;
 }
 
-async function sendInfoHeader(
+export async function sendInfoHeader(
   db: DbQuery,
   thread: Thread,
   user: User,
@@ -1288,16 +1415,26 @@ async function sendInfoHeader(
     embeds: [embed],
   });
 
-  await new ThreadMessage({
+  const threadMessage: ThreadMessage = {
     thread_id: thread.id,
     message_type: ThreadMessageType.System,
-    user_id: undefined,
+    user_id: "",
     user_name: "",
     body: infoHeader,
     metadata: { embeds: [embed] },
     inbox_message_id: message.id,
     is_anonymous: false,
-  }).saveToDb(db);
+    message_number: 0,
+    role_name: "",
+    attachments: [],
+    small_attachments: [],
+    dm_channel_id: "",
+    dm_message_id: "",
+    created_at: new Date(),
+    use_legacy_format: false,
+  };
+
+  await threadMessages.create(db, threadMessage);
 
   return !!message;
 }
@@ -1334,7 +1471,7 @@ async function formatStaffReplies(
   );
 }
 
-async function buildCloseEmbed(
+export async function buildCloseEmbed(
   db: DbQuery,
   thread: Thread,
   closer_id: string,
@@ -1357,7 +1494,7 @@ async function buildCloseEmbed(
 
   const participantList =
     staffReplies.length > 0 ? staffReplies.join(", ") : "None";
-  const logUrl = getSelfUrl(`/logs/${thread.id}`);
+  const logUrl = await getSelfUrl(`/logs/${thread.id}`);
   const roleEmoji = getRoleEmoji(author);
 
   return new EmbedBuilder()

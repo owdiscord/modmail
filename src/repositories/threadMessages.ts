@@ -37,8 +37,8 @@ export async function updateMessageContent(
   await sql.mutation`UPDATE thread_messages SET body = ${content} WHERE thread_id = ${thread_id} AND dm_message_id = ${message_id}`;
 }
 
-// Delete a thread message, once again cross-matching the message ID and thread ID
-export async function deleteThreadMessage(sql: DbQuery, message_id: string) {
+// Delete a thread message by its ID
+export async function deleteThreadMessage(sql: DbQuery, message_id: number) {
   await sql.mutation`DELETE FROM thread_messages WHERE AND id = ${message_id}`;
 }
 
@@ -61,13 +61,22 @@ export async function getThreadMessageBySnowflake(
   return await sql<ThreadMessageRow>`SELECT * FROM thread_messages WHERE thread_id = ${thread_id} AND (dm_message_id = ${message_id} OR inbox_message_id = ${message_id})`;
 }
 
-// Get the latest message from a given thread This only returns non-system
+// Get the latest messages from a given thread This only returns non-system
 // message, ie FromUser, ToUser, and SystemToUser.
 export async function getLatestThreadMessages(
   sql: DbQuery,
   thread_id: string,
 ): Promise<ThreadMessageRow[]> {
   return await sql`SELECT * FROM thread_messages WHERE thread_id = ${thread_id} AND message_type IN (${ThreadMessageType.FromUser}, ${ThreadMessageType.ToUser}, ${ThreadMessageType.SystemToUser}) ORDER BY created_at DESC, id DESC LIMIT 1`;
+}
+
+// Get the latest messages from a given thread This only returns non-system
+// message, ie FromUser, ToUser, and SystemToUser.
+export async function getLatestThreadMessage(
+  sql: DbQuery,
+  thread_id: string,
+): Promise<ThreadMessageRow[]> {
+  return await sql`SELECT * FROM thread_messages WHERE thread_id = ${thread_id} AND message_type IN (${ThreadMessageType.FromUser}, ${ThreadMessageType.ToUser}, ${ThreadMessageType.SystemToUser}) ORDER BY created_at DESC, id`;
 }
 
 // Get the stored message by its number in the thread. This refers to the number

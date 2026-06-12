@@ -2,10 +2,10 @@ import type { Embed } from "discord.js";
 import type { FC } from "hono/jsx";
 import { marked, type TokenizerAndRendererExtension } from "marked";
 import { ThreadMessageType } from "../data/constants";
-import { getRegisteredUsername } from "../data/Registration";
+import { getRegisteredUsername } from "../repositories/registration";
 import type { Thread as DBThread } from "../data/Thread";
 import type { ThreadMessage as DBThreadMessage } from "../data/ThreadMessage";
-import { findThreadLogByChannelID } from "../data/threads";
+import { findThreadLogByChannelID } from "../repositories/threads";
 import { useDb } from "../db";
 
 const db = useDb();
@@ -559,7 +559,7 @@ function collapseGroup(group: DBThreadMessage[]): CollapsedThreadMessage {
   if (group.length === 1 && group[0]) {
     return {
       ...group[0],
-      ids: [group[0].id],
+      ids: [group[0].id || 0],
       message_numbers: [group[0].message_number],
       bodies: [group[0].body],
     };
@@ -569,7 +569,7 @@ function collapseGroup(group: DBThreadMessage[]): CollapsedThreadMessage {
   if (!first) throw "Fatality";
 
   return {
-    ids: group.map((m) => m.id),
+    ids: group.map((m) => m.id || 0),
     thread_id: first.thread_id,
     message_type: first.message_type,
     message_numbers: group.map((m) => m.message_number),

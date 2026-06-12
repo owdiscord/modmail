@@ -108,7 +108,7 @@ export class Commands {
       if (!handler) return null;
 
       // Thread is guaranteed to exist because of preFilter
-      const thread = await threads.findOpenThreadByChannelId(
+      const thread = await threads.findOpenThreadByChannelID(
         this.db,
         msg.channel.id,
       );
@@ -118,7 +118,7 @@ export class Commands {
       const handler = this.handlers.inbox.get(matchedCommand.id);
       if (!handler) return null;
 
-      const thread = await threads.findOpenThreadByChannelId(
+      const thread = await threads.findOpenThreadByChannelID(
         this.db,
         msg.channel.id,
       );
@@ -191,7 +191,7 @@ export class Commands {
           // Check if thread exists
           const thread = (commandConfig.allowSuspended as boolean)
             ? await threads.findByChannelID(this.db, context.msg.channel.id)
-            : await threads.findOpenThreadByChannelId(
+            : await threads.findOpenThreadByChannelID(
                 this.db,
                 context.msg.channel.id,
               );
