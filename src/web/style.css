@@ -11,6 +11,9 @@
 
   --color-link: #76aff6;
 
+  --color-info-bg: #323c4b;
+  --color-info-fg: #8ebefa;
+
   --color-white: #fff;
   --color-mod: #f86d1d;
   --color-admin: #4781ff;
@@ -67,9 +70,7 @@ body {
     gap: 1rem;
     color: var(--color-gray-100);
 
-    &:not([data-message-type="from-user"]):not(
-        [data-message-type="to-user"]
-      ):not([data-message-type="system-to-user"]) {
+    &:not([data-message-type="from-user"]):not([data-message-type="to-user"]):not([data-message-type="system-to-user"]) {
       background: var(--color-gray-900);
     }
   }
