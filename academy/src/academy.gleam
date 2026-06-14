@@ -1,4 +1,6 @@
 import academy/icons
+import academy/meta
+import gleam/dynamic/decode
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
@@ -14,6 +16,9 @@ import lustre/element/keyed
 import lustre/element/svg
 import lustre/event
 import modem
+import rsvp
+
+const base_url = "http://localhost:8800"
 
 pub fn main() {
   let app = lustre.application(init, update, view)
@@ -50,7 +55,7 @@ type ThreadMsgKind {
   SystemMsg
 }
 
-type StaffRole {
+type ThreadRole {
   TraineeRole
   ModRole
   HelperRole
@@ -62,7 +67,7 @@ type StaffRole {
 type ThreadMsg {
   ThreadMsg(
     kind: ThreadMsgKind,
-    role: StaffRole,
+    role: ThreadRole,
     user_id: String,
     user_name: String,
     content: String,
@@ -83,8 +88,41 @@ type ModmailThread {
   )
 }
 
+type UserRole {
+  AdminUser
+  HelperUser
+  ModUser
+  TraineeUser
+  UnknownUser
+}
+
+fn user_role_decoder() -> decode.Decoder(UserRole) {
+  use variant <- decode.then(decode.string)
+  case variant {
+    "admin" -> decode.success(AdminUser)
+    "helper" -> decode.success(HelperUser)
+    "mod" -> decode.success(ModUser)
+    "trainee" -> decode.success(TraineeUser)
+    _ -> decode.failure(UnknownUser, "UserRole")
+  }
+}
+
 type User {
-  User(id: String, display_name: String, token: String, avatar: String)
+  User(
+    logged_in: Bool,
+    id: String,
+    display_name: String,
+    avatar: String,
+    role: UserRole,
+  )
+}
+
+fn user_decoder() -> decode.Decoder(User) {
+  use id <- decode.field("id", decode.string)
+  use display_name <- decode.field("display_name", decode.string)
+  use avatar <- decode.field("avatar_url", decode.string)
+  use role <- decode.field("role", user_role_decoder())
+  decode.success(User(logged_in: True, id:, display_name:, avatar:, role:))
 }
 
 type Model {
@@ -99,6 +137,9 @@ type Model {
     total_cases: Int,
     total_threads: Int,
     total_issues: Int,
+    cases: List(String),
+    // Interview stuff
+    interview_questions: List(String),
     // Thread filtering
     thread_filter: String,
     threads_open: Bool,
@@ -136,6 +177,7 @@ fn init(_) -> #(Model, Effect(Message)) {
               ],
             ),
           )
+
         Ok(["academy", "cases"]) -> Cases
 
         Ok(["academy", "questions"]) -> InterviewQuestions
@@ -159,13 +201,20 @@ fn init(_) -> #(Model, Effect(Message)) {
       route:,
       loading: False,
       wave: "2026 — June",
+      cases: [],
       user: User(
+        logged_in: True,
         id: "",
         display_name: "Isaac",
-        token: "",
         avatar: "https://cdn.discordapp.com/guilds/94882524378968064/users/204084691425427466/avatars/98bdb0a9854cc0da563f51b6a300a98b.png?size=512",
+        role: UnknownUser,
       ),
-      issues: [],
+      issues: [
+        "Bleh",
+        "Bleh",
+        "Bleh",
+        "Bleh",
+      ],
       threads: [
         ModmailThread(
           id: "ed381ca7-5a8b-4546-9bdd-247ec0531ebc",
@@ -194,6 +243,7 @@ fn init(_) -> #(Model, Effect(Message)) {
           issue_count: 2,
         ),
       ],
+      interview_questions: [],
       total_cases: 0,
       total_threads: 0,
       total_issues: 0,
@@ -202,13 +252,19 @@ fn init(_) -> #(Model, Effect(Message)) {
       threads_closed: True,
       thread_trainee: None,
     ),
-    modem.init(on_url_change),
+    effect.batch([modem.init(on_url_change), get_user(), route_effects(route)]),
   )
 }
 
 type Message {
   OnRouteChange(Route)
 
+  // Api returning
+  ApiReturnedUser(Result(User, rsvp.Error(String)))
+
+  ApiReturnedQuestions(Result(List(String), rsvp.Error(String)))
+
+  // User initiated actions
   UserChangedThreadOpenFilter(Bool)
 
   UserChangedThreadClosedFilter(Bool)
@@ -274,7 +330,24 @@ fn on_url_change(uri: uri.Uri) -> Message {
 
 fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
   case message {
-    OnRouteChange(route) -> #(Model(..model, route:), effect.none())
+    OnRouteChange(route) -> #(Model(..model, route:), route_effects(route))
+
+    ApiReturnedUser(Ok(user)) -> #(Model(..model, user: user), effect.none())
+
+    ApiReturnedUser(err) -> {
+      echo err
+      #(model, effect.none())
+    }
+
+    ApiReturnedQuestions(Ok(interview_questions)) -> #(
+      Model(..model, interview_questions:),
+      effect.none(),
+    )
+
+    ApiReturnedQuestions(err) -> {
+      echo err
+      #(model, effect.none())
+    }
 
     UserChangedThreadOpenFilter(state) -> #(
       Model(..model, threads_open: state),
@@ -342,7 +415,7 @@ fn view(model: Model) -> Element(Message) {
 
     case model.route {
       Threads | Thread(_) -> threads_sidebar(model)
-      Cases | Case(_) -> threads_sidebar(model)
+      Cases | Case(_) -> cases_sidebar(model)
       _ -> element.none()
     },
 
@@ -379,7 +452,7 @@ fn view(model: Model) -> Element(Message) {
                 html.summary(
                   [
                     class(
-                      "flex items-center gap-3 font-semibold cursor-pointer rounded-md py-2 px-5 border border-transparent transition-colors hover:border-gray-800 hover:bg-gray-1000",
+                      "flex items-center gap-3 font-semibold cursor-pointer rounded-md py-2 px-3 border border-transparent transition-colors hover:border-gray-800 hover:bg-gray-1000",
                     ),
                   ],
                   [
@@ -438,95 +511,16 @@ fn view(model: Model) -> Element(Message) {
               html.text("Please select a thread"),
             ])
 
-          Issues -> html.div([], [])
+          Issues -> issues_view(model)
 
           Cases -> html.div([], [])
 
           Case(_) -> html.div([], [])
 
-          Stats ->
-            html.section([class("grid lg:grid-cols-3 gap-8 p-6")], [
-              html.article(
-                [class("bg-gray-900 rounded-xl p-8 flex items-center gap-8")],
-                [
-                  html.figure([class("p-4 rounded-lg bg-gray-800")], [
-                    icons.envelope([class("size-8 text-orange-300")]),
-                  ]),
-                  html.div([], [
-                    html.h1([class("text-3xl font-extrabold text-white")], [
-                      html.text(int.to_string(model.total_threads)),
-                    ]),
-                    html.h3([class("text-gray-300")], [
-                      html.text("Threads"),
-                    ]),
-                  ]),
-                ],
-              ),
-              html.article(
-                [class("bg-gray-900 rounded-xl p-8 flex items-center gap-8")],
-                [
-                  html.figure([class("p-4 rounded-lg bg-gray-800")], [
-                    icons.cases([class("size-8 text-blue-300")]),
-                  ]),
-                  html.div([], [
-                    html.h1([class("text-3xl font-extrabold text-white")], [
-                      html.text(int.to_string(model.total_cases)),
-                    ]),
-                    html.h3([class("text-gray-300")], [
-                      html.text("Cases"),
-                    ]),
-                  ]),
-                ],
-              ),
-              html.article(
-                [class("bg-gray-900 rounded-xl p-8 flex items-center gap-8")],
-                [
-                  html.figure([class("p-4 rounded-lg bg-gray-800")], [
-                    icons.issues([class("size-8 text-rose-300")]),
-                  ]),
-                  html.div([], [
-                    html.h1([class("text-3xl font-extrabold text-white")], [
-                      html.text(int.to_string(model.total_issues)),
-                    ]),
-                    html.h3([class("text-gray-300")], [
-                      html.text("Issues"),
-                    ]),
-                  ]),
-                ],
-              ),
+          Stats -> stats_view(model)
 
-              html.header([class("lg:col-span-3")], [
-                html.h3([class("text-xl font-bold text-white")], [
-                  html.text("Trainees"),
-                ]),
-              ]),
-
-              keyed.ul(
-                [class("grid gap-2 lg:col-span-3")],
-                list.map(model.trainees, fn(trainee) {
-                  #(
-                    "trainee#" <> trainee.id,
-                    html.li([class("bg-gray-900 rounded-lg p-6")], [
-                      html.h3([class("font-bold text-white text-lg")], [
-                        html.text(trainee.name),
-                      ]),
-                      html.p([class("text-gray-300")], [
-                        html.text(
-                          int.to_string(trainee.message_count)
-                          <> " messages, "
-                          <> int.to_string(trainee.thread_participation_count)
-                          <> " threads participated in, "
-                          <> int.to_string(trainee.issue_count)
-                          <> " issues",
-                        ),
-                      ]),
-                    ]),
-                  )
-                }),
-              ),
-            ])
-
-          InterviewQuestions -> questions_view()
+          InterviewQuestions ->
+            questions_view(model.user, model.interview_questions)
 
           NotFound(_) -> html.div([], [])
         },
@@ -766,6 +760,126 @@ fn threads_sidebar(model: Model) {
   ])
 }
 
+fn cases_sidebar(model: Model) {
+  html.aside([class("lg:col-span-3 bg-gray-900 h-[100dvh] flex flex-col")], [
+    html.header(
+      [
+        class("px-4 flex items-center h-20 border-b border-gray-800"),
+      ],
+      [
+        html.form([attribute.action("#"), class("relative w-full")], [
+          html.input([
+            event.on_input(UserWroteThreadFilter),
+            attribute.placeholder("Search case user..."),
+            class(
+              "border border-gray-800 bg-gray-950 rounded-md py-1.5 px-4 w-full transition-colors outline-none",
+            ),
+          ]),
+        ]),
+      ],
+    ),
+    html.nav([class("filters p-4 flex gap-2 flex-wrap")], [
+      html.select(
+        [
+          event.on_change(UserChangedThreadTraineeFilter),
+          class(
+            "bg-gray-800 rounded-sm py-1 px-3 font-semibold flex items-center gap-2 flex-1 transition-opacity cursor-pointer hover:opacity-80",
+          ),
+        ],
+        [
+          html.option([attribute.value("")], "Any Case Type"),
+          html.option([attribute.value("warns")], "Warns"),
+          html.option([attribute.value("mutes")], "Mutes"),
+          html.option([attribute.value("bans")], "Bans"),
+        ],
+      ),
+
+      html.select(
+        [
+          event.on_change(UserChangedThreadTraineeFilter),
+          class(
+            "bg-gray-800 rounded-sm py-1 px-3 font-semibold flex items-center gap-2 flex-1 transition-opacity cursor-pointer hover:opacity-80",
+          ),
+        ],
+        [
+          html.option([attribute.value("")], "Any Trainee"),
+          ..list.map(model.trainees, fn(trainee) {
+            html.option([attribute.value(trainee.id)], trainee.name)
+          })
+        ],
+      ),
+    ]),
+
+    keyed.ul(
+      [class("grid gap-4 px-4")],
+      list.index_map(model.cases, fn(issue, i) {
+        #(
+          "issue#" <> int.to_string(i),
+          html.li([], [
+            html.a(
+              [
+                attribute.href("/academy/issues/" <> int.to_string(i)),
+                class(
+                  "border border-gray-750 bg-gray-800 rounded border-l-3 border-l-case-blue py-2 px-3 grid gap-2",
+                ),
+              ],
+              [
+                html.h3([class("font-bold text-white")], [
+                  html.text("Bad Modmail response"),
+                ]),
+                html.p([], [
+                  html.text("Not comfortable with how this one went..."),
+                ]),
+                html.ul([class("flex gap-5 flex-wrap")], [
+                  html.li([], [
+                    html.h5([class("text-white font-semibold")], [
+                      html.text("Reported by"),
+                    ]),
+                    html.p([], [
+                      html.button(
+                        [
+                          class(
+                            "px-1 py-0.5 rounded-md bg-tag-bg text-tag-fg leading-none",
+                          ),
+                        ],
+                        [html.text("@graphiteisaac")],
+                      ),
+                    ]),
+                  ]),
+
+                  html.li([], [
+                    html.h5([class("text-white font-semibold")], [
+                      html.text("Trainee"),
+                    ]),
+                    html.p([], [
+                      html.button(
+                        [
+                          class(
+                            "px-1 py-0.5 rounded-md bg-tag-bg text-tag-fg leading-none",
+                          ),
+                        ],
+                        [html.text("@poopsocket")],
+                      ),
+                    ]),
+                  ]),
+                ]),
+                html.footer([class("text-sm")], [
+                  html.p([], [
+                    html.text("Created "),
+                    html.time([class("bg-gray-750 rounded-sm px-1")], [
+                      html.text("June 24th, 2026"),
+                    ]),
+                  ]),
+                ]),
+              ],
+            ),
+          ]),
+        )
+      }),
+    ),
+  ])
+}
+
 fn filtered_threads(model: Model) -> List(ModmailThread) {
   model.threads
   |> list.filter(fn(thread) {
@@ -780,76 +894,346 @@ fn filtered_threads(model: Model) -> List(ModmailThread) {
   })
 }
 
-fn questions_view() {
+fn questions_view(user: User, questions: List(String)) {
   html.div([class("p-6 bg-gray-900")], [
-    html.p([class("text-gray-300 flex items-center gap-2 mb-8")], [
-      icons.info_circle([class("size-5 text-blue-300")]),
-      html.text(
-        "Clicking the question text will automatically copy-paste it into your clipboard, prefixed with !ar.",
-      ),
-    ]),
-    keyed.ul(
-      [class("grid gap-4")],
-      list.index_map([], fn(q, i) {
-        #(
-          "question-" <> int.to_string(i),
-          html.li(
-            [
-              class(
-                "flex items-center px-4 py-5 bg-gray-800 border border-gray-750 rounded-lg",
-              ),
-            ],
-            [
-              html.input([
-                attribute.type_("checkbox"),
-                class("opacity-0 absolute"),
-              ]),
-              html.div(
+    html.p(
+      [
+        class(
+          "text-white border border-info-fg bg-info-bg rounded-md px-4 py-2 flex items-center gap-2 mb-8",
+        ),
+      ],
+      [
+        icons.info_circle([class("size-5 text-info-fg")]),
+        html.text(
+          "Clicking the question text will automatically copy-paste it into your clipboard, prefixed with !ar.",
+        ),
+        case user.role {
+          AdminUser ->
+            html.a(
+              [
+                attribute.href("/academy/edit-questions"),
+                class(
+                  "ml-auto bg-gray-800 rounded-md py-1 px-4 transition-colors cursor-pointer hover:bg-gray-750",
+                ),
+              ],
+              [
+                html.text("Edit"),
+              ],
+            )
+          _ -> element.none()
+        },
+      ],
+    ),
+    case questions {
+      [] ->
+        html.div(
+          [
+            attribute.role("alert"),
+            class(
+              "text-white border border-orange-300 bg-orange-500/10 rounded-md px-4 py-2 flex items-center gap-2 mb-8",
+            ),
+          ],
+          [
+            icons.info_circle([class("size-5 text-orange-300")]),
+            html.text("Loading interview questions..."),
+          ],
+        )
+      _ ->
+        keyed.ul(
+          [class("grid gap-4")],
+          list.index_map(questions, fn(question, i) {
+            #(
+              "question-" <> int.to_string(i),
+              html.li(
                 [
-                  attribute.class(
-                    "bg-gray-800 border border-gray-750 p-1 rounded-md mr-4",
+                  class(
+                    "flex items-center px-4 py-5 bg-gray-800 border border-gray-750 rounded-lg",
                   ),
                 ],
                 [
-                  svg.svg(
+                  html.input([
+                    attribute.type_("checkbox"),
+                    class("opacity-0 absolute"),
+                  ]),
+                  html.div(
                     [
-                      attribute.class("size-5"),
-                      attribute("stroke-linejoin", "round"),
-                      attribute("stroke-linecap", "round"),
-                      attribute("stroke-width", "3"),
-                      attribute("stroke", "currentColor"),
-                      attribute("fill", "none"),
-                      attribute("viewBox", "0 0 24 24"),
-                      attribute("xmlns", "http://www.w3.org/2000/svg"),
-                    ],
-                    [svg.path([attribute("d", "M20 6 9 17l-5-5")])],
-                  ),
-                ],
-              ),
-              // html.p([attribute.class("question-num")], [
-              //   html.text("#" <> int.to_string(i + 1)),
-              // ]),
-              html.div(
-                [attribute.class("questions")],
-                list.map([], fn(content) -> element.Element(a) {
-                  html.p(
-                    [
-                      attribute.class("question hover:underline cursor-pointer"),
-                      attribute.attribute(
-                        "onclick",
-                        "window.navigator.clipboard.writeText(this.textContent)",
+                      attribute.class(
+                        "bg-gray-800 border border-gray-750 p-1 rounded-md mr-4",
                       ),
                     ],
                     [
-                      html.text(content),
+                      svg.svg(
+                        [
+                          attribute.class("size-5"),
+                          attribute("stroke-linejoin", "round"),
+                          attribute("stroke-linecap", "round"),
+                          attribute("stroke-width", "3"),
+                          attribute("stroke", "currentColor"),
+                          attribute("fill", "none"),
+                          attribute("viewBox", "0 0 24 24"),
+                          attribute("xmlns", "http://www.w3.org/2000/svg"),
+                        ],
+                        [svg.path([attribute("d", "M20 6 9 17l-5-5")])],
+                      ),
                     ],
-                  )
-                }),
+                  ),
+                  // html.p([attribute.class("question-num")], [
+                  //   html.text("#" <> int.to_string(i + 1)),
+                  // ]),
+                  html.div([attribute.class("questions")], [
+                    html.p(
+                      [
+                        attribute.class(
+                          "question hover:underline cursor-pointer",
+                        ),
+                        attribute.attribute(
+                          "onclick",
+                          "window.navigator.clipboard.writeText(this.textContent)",
+                        ),
+                      ],
+                      [
+                        html.text(question),
+                      ],
+                    ),
+                  ]),
+                ],
               ),
+            )
+          }),
+        )
+    },
+  ])
+}
+
+fn stats_view(model: Model) {
+  html.section([class("grid lg:grid-cols-3 gap-8 p-6 bg-gray-900")], [
+    html.article(
+      [
+        class(
+          "bg-gray-800 border border-gray-750 rounded-xl p-8 flex items-center gap-8",
+        ),
+      ],
+      [
+        html.figure([class("p-4 rounded-lg bg-orange-500/10")], [
+          icons.envelope([class("size-8 text-orange-300")]),
+        ]),
+        html.div([], [
+          html.h1([class("text-3xl font-extrabold text-white")], [
+            html.text(int.to_string(model.total_threads)),
+          ]),
+          html.h3([class("text-gray-300")], [
+            html.text("Threads"),
+          ]),
+        ]),
+      ],
+    ),
+    html.article(
+      [
+        class(
+          "bg-gray-800 border border-gray-750 rounded-xl p-8 flex items-center gap-8",
+        ),
+      ],
+      [
+        html.figure([class("p-4 rounded-lg bg-blue-500/10")], [
+          icons.cases([class("size-8 text-blue-300")]),
+        ]),
+        html.div([], [
+          html.h1([class("text-3xl font-extrabold text-white")], [
+            html.text(int.to_string(model.total_cases)),
+          ]),
+          html.h3([class("text-gray-300")], [
+            html.text("Cases"),
+          ]),
+        ]),
+      ],
+    ),
+    html.article(
+      [
+        class(
+          "bg-gray-800 border border-gray-750 rounded-xl p-8 flex items-center gap-8",
+        ),
+      ],
+      [
+        html.figure([class("p-4 rounded-lg bg-rose-500/10")], [
+          icons.issues([class("size-8 text-rose-300")]),
+        ]),
+        html.div([], [
+          html.h1([class("text-3xl font-extrabold text-white")], [
+            html.text(int.to_string(model.total_issues)),
+          ]),
+          html.h3([class("text-gray-300")], [
+            html.text("Issues"),
+          ]),
+        ]),
+      ],
+    ),
+
+    html.header([class("lg:col-span-3")], [
+      html.h3([class("text-xl font-bold text-white")], [
+        html.text("Trainees"),
+      ]),
+    ]),
+
+    keyed.ul(
+      [class("grid gap-4 lg:col-span-3")],
+      list.map(model.trainees, fn(trainee) {
+        #(
+          "trainee#" <> trainee.id,
+          html.li(
+            [
+              class(
+                "rounded flex items-center gap-4 p-2 hover:bg-gray-800 transition-colors",
+              ),
+            ],
+            [
+              html.figure([class("size-14 rounded-full bg-black")], []),
+              html.div([], [
+                html.h3([class("font-semibold text-lg text-ow-mod")], [
+                  html.text(trainee.name),
+                ]),
+                html.p([class("text-gray-300")], [
+                  html.text(
+                    int.to_string(trainee.message_count)
+                    <> " messages, "
+                    <> int.to_string(trainee.thread_participation_count)
+                    <> " threads participated in, "
+                    <> int.to_string(trainee.issue_count)
+                    <> " issues",
+                  ),
+                ]),
+              ]),
             ],
           ),
         )
       }),
     ),
   ])
+}
+
+fn issues_view(model: Model) {
+  html.div([class("p-6 bg-gray-900")], [
+    html.header([class("flex items-center justify-between gap-4 mb-8")], [
+      html.h2([class("text-2xl text-gray-100")], [
+        html.text(int.to_string(list.length(model.issues)) <> " issues found"),
+      ]),
+    ]),
+    html.section([], [
+      keyed.ul(
+        [class("grid gap-4")],
+        list.index_map(model.issues, fn(issue, i) {
+          #(
+            "issue#" <> int.to_string(i),
+            html.li([], [
+              html.a(
+                [
+                  attribute.href("/academy/issues/" <> int.to_string(i)),
+                  class(
+                    "block border border-gray-750 bg-gray-800 rounded border-l-3 border-l-case-blue py-4 px-5",
+                  ),
+                ],
+                [
+                  html.h3([class("font-bold text-white")], [
+                    html.text("Bad Modmail response"),
+                  ]),
+                  html.p([], [
+                    html.text("Not comfortable with how this one went..."),
+                  ]),
+                  // html.ul([class("flex gap-5 flex-wrap")], [
+                //   html.li([], [
+                //     html.h5([class("text-white font-semibold")], [
+                //       html.text("Reported by"),
+                //     ]),
+                //     html.p([], [
+                //       html.button(
+                //         [
+                //           class(
+                //             "px-1 py-0.5 rounded-md bg-tag-bg text-tag-fg leading-none",
+                //           ),
+                //         ],
+                //         [html.text("@graphiteisaac")],
+                //       ),
+                //     ]),
+                //   ]),
+                //
+                //   html.li([], [
+                //     html.h5([class("text-white font-semibold")], [
+                //       html.text("Trainee"),
+                //     ]),
+                //     html.p([], [
+                //       html.button(
+                //         [
+                //           class(
+                //             "px-1 py-0.5 rounded-md bg-tag-bg text-tag-fg leading-none",
+                //           ),
+                //         ],
+                //         [html.text("@poopsocket")],
+                //       ),
+                //     ]),
+                //   ]),
+                // ]),
+                // html.footer([class("text-sm")], [
+                //   html.p([], [
+                //     html.text("Created "),
+                //     html.time([class("bg-gray-750 rounded-sm px-1")], [
+                //       html.text("June 24th, 2026"),
+                //     ]),
+                //   ]),
+                // ]),
+                ],
+              ),
+            ]),
+          )
+        }),
+      ),
+    ]),
+  ])
+}
+
+// Data functions
+
+fn get_user() {
+  let handler = rsvp.expect_json(user_decoder(), ApiReturnedUser)
+  rsvp.get(base_url <> "/academy/api/auth/me", handler)
+}
+
+fn get_questions() {
+  let handler =
+    rsvp.expect_json(decode.list(decode.string), ApiReturnedQuestions)
+  rsvp.get(base_url <> "/academy/api/questions", handler)
+}
+
+// Other effects
+fn set_title(route: Route) {
+  let page_title = case route {
+    Threads -> "Threads"
+    Thread(ModmailThread(id:, ..)) -> "Thread #" <> id
+    Cases -> "Cases"
+    Case(id:) -> "Case #" <> int.to_string(id)
+    Stats -> "Statistics"
+    Issues -> "Issues"
+    InterviewQuestions -> "Interview Questions"
+    NotFound(..) -> "Page not found"
+  }
+
+  use _ <- effect.from
+  meta.set_page_title(page_title <> " ・ Academy")
+}
+
+// Utils
+
+fn route_effects(route: Route) -> effect.Effect(Message) {
+  let data_effects = case route {
+    Threads -> []
+    Thread(ModmailThread(_, ..)) -> []
+    Cases -> []
+    Case(_) -> []
+    Stats -> []
+    Issues -> []
+    InterviewQuestions -> [
+      get_questions(),
+    ]
+    NotFound(..) -> []
+  }
+
+  effect.batch([set_title(route), ..data_effects])
 }

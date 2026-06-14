@@ -19,6 +19,14 @@
   --color-green-bg: #2f403e;
   --color-green-fg: #62b77c;
 
+  --color-case-blue: #3498db;
+
+  --color-tag-bg: #40446b;
+  --color-tag-fg: #c9d3fb;
+
+  --color-info-bg: #323c4b;
+  --color-info-fg: #8ebefa;
+
   /* --color-gray-950: #161619; */
   /* --color-gray-900: #1b1b1f; */
   /* --color-gray-800: #2e3136; */
