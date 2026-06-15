@@ -39,7 +39,7 @@ importers:
         specifier: ^6.1.0
         version: 6.1.0
       marked:
-        specifier: ^17.0.1
+        specifier: ^17.0.6
         version: 17.0.6
       mysql2:
         specifier: ^3.11.3

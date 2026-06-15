@@ -2,8 +2,8 @@ import { ChannelType, Events, GuildChannel } from "discord.js";
 import type { Thread } from "../data/Thread";
 import type { ModuleProps } from "../plugins";
 import * as threads from "../repositories/threads";
-import { noop } from "../utils";
 import { getDMChannel } from "../thread";
+import { noop } from "../utils";
 
 export default ({ bot, db, config }: ModuleProps) => {
   if (config.typingProxyToInbox || config.typingProxyToUser) {

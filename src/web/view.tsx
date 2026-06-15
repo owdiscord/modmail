@@ -2,11 +2,11 @@ import type { Embed } from "discord.js";
 import type { FC } from "hono/jsx";
 import { marked, type TokenizerAndRendererExtension } from "marked";
 import { ThreadMessageType } from "../data/constants";
-import { getRegisteredUsername } from "../repositories/registration";
 import type { Thread as DBThread } from "../data/Thread";
 import type { ThreadMessage as DBThreadMessage } from "../data/ThreadMessage";
-import { findThreadLogByChannelID } from "../repositories/threads";
 import { useDb } from "../db";
+import { getRegisteredUsername } from "../repositories/registration";
+import { findThreadLogByChannelID } from "../repositories/threads";
 
 const db = useDb();
 

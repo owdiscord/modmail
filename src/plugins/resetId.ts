@@ -1,10 +1,10 @@
+import type { ModuleProps } from "../plugins";
 import {
   findOpenThreadByChannelID,
   resetThreadID,
 } from "../repositories/threads";
-import type { ModuleProps } from "../plugins";
-import { postLog } from "../utils";
 import { getThreadChannel, postSystemMessage } from "../thread";
+import { postLog } from "../utils";
 
 export default ({ db, commands, config }: ModuleProps) => {
   commands.addGlobalCommand(

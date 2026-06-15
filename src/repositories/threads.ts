@@ -8,9 +8,9 @@ import {
   type ThreadProps,
   type Thread as ThreadX,
 } from "../data/Thread";
+import type { ThreadMessage } from "../data/ThreadMessage";
 import type { DbQuery, MutationResult } from "../db";
 import { threadCreationQueue } from "../queue";
-import type { ThreadMessage } from "../data/ThreadMessage";
 
 export type Thread = ThreadX;
 export type ThreadRow = ThreadProps & RowDataPacket;
@@ -304,7 +304,7 @@ export async function getClosedThreadCountByUserId(
   const result =
     await db`SELECT COUNT(id) AS thread_count FROM threads WHERE status = ${ThreadStatus.Closed} AND user_id = ${user_id} AND created_at <= ${created_time}`;
 
-  return result && result[0]?.thread_count ? result[0].thread_count : 0;
+  return result?.[0]?.thread_count ? result[0].thread_count : 0;
 }
 
 export async function findOrCreateThreadForUser(
@@ -473,7 +473,7 @@ export async function getUserThreadsClosedCount(
     }
   >`SELECT coalesce(COUNT(id), 0) count FROM threads WHERE user_id = ${user_id} AND created_at <= ${created_time} AND status = ${ThreadStatus.Closed}`;
 
-  if (result && result[0]) return result[0]?.count || 0;
+  if (result?.[0]) return result[0]?.count || 0;
 
   return 0;
 }

@@ -70,7 +70,9 @@ body {
     gap: 1rem;
     color: var(--color-gray-100);
 
-    &:not([data-message-type="from-user"]):not([data-message-type="to-user"]):not([data-message-type="system-to-user"]) {
+    &:not([data-message-type="from-user"]):not(
+        [data-message-type="to-user"]
+      ):not([data-message-type="system-to-user"]) {
       background: var(--color-gray-900);
     }
   }
@@ -185,6 +187,30 @@ body {
   }
 }
 
+[data-role="mod"],
+[data-role="moderator"],
+[data-role="trainee"] {
+  color: var(--color-mod);
+}
+
+[data-role="admin"],
+[data-role="administrator"] {
+  color: var(--color-admin);
+}
+
+[data-message-type="system"],
+[data-message-type="system-to-user"] {
+  --user-color: var(--color-mod);
+}
+
+[data-message-type="from-user"] {
+  --user-color: var(--color-white);
+}
+
+[data-message-type="internal"] {
+  --user-color: var(--color-mod);
+}
+
 .server-roles {
   display: flex;
   flex-wrap: wrap;
@@ -226,30 +252,6 @@ body {
       border-radius: 100%;
     }
   }
-}
-
-[data-role="mod"],
-[data-role="moderator"],
-[data-role="trainee"] {
-  color: var(--color-mod);
-}
-
-[data-role="admin"],
-[data-role="administrator"] {
-  color: var(--color-admin);
-}
-
-[data-message-type="system"],
-[data-message-type="system-to-user"] {
-  --user-color: var(--color-mod);
-}
-
-[data-message-type="from-user"] {
-  --user-color: var(--color-white);
-}
-
-[data-message-type="internal"] {
-  --user-color: var(--color-mod);
 }
 
 .msg-embed {

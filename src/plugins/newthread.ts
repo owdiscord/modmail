@@ -1,9 +1,9 @@
-import { findOpenThreadByUserID } from "../repositories/threads";
+import { createNewThreadForUser, type Thread } from "../data/Thread";
 import type { ModuleProps } from "../plugins";
-import { postSystemMessageWithFallback } from "../utils";
-import { type Thread, createNewThreadForUser } from "../data/Thread";
-import { postSystemMessage } from "../thread";
 import { threadCreationQueue } from "../queue";
+import { findOpenThreadByUserID } from "../repositories/threads";
+import { postSystemMessage } from "../thread";
+import { postSystemMessageWithFallback } from "../utils";
 
 export default ({ bot, db, config, commands }: ModuleProps) => {
   commands.addInboxServerCommand(

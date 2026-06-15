@@ -7,11 +7,12 @@ import {
   setModeratorDefaultRoleOverride,
   setModeratorThreadRoleOverride,
 } from "../data/displayRoles";
-import type Thread from "../data/Thread";
+import type { Thread } from "../data/Thread";
 import type { ModuleProps } from "../plugins";
+import { postSystemMessage } from "../thread";
 import { getInboxGuild, isSnowflake } from "../utils";
 
-export default ({ config, commands }: ModuleProps) => {
+export default ({ db, config, commands }: ModuleProps) => {
   if (!config.allowChangingDisplayRole) {
     return;
   }
@@ -45,11 +46,15 @@ export default ({ config, commands }: ModuleProps) => {
         thread.id,
       );
       if (displayRole) {
-        thread.postSystemMessage(
+        postSystemMessage(
+          db,
+          thread,
           `Your display role in this thread is currently **${displayRole}**`,
         );
       } else {
-        thread.postSystemMessage(
+        postSystemMessage(
+          db,
+          thread,
           "Your replies in this thread do not currently display a role",
         );
       }
@@ -71,11 +76,15 @@ export default ({ config, commands }: ModuleProps) => {
         thread.id,
       );
       if (displayRole) {
-        thread.postSystemMessage(
+        postSystemMessage(
+          db,
+          thread,
           `Your display role for this thread has been reset. Your replies will now display the default role **${displayRole}**.`,
         );
       } else {
-        thread.postSystemMessage(
+        postSystemMessage(
+          db,
+          thread,
           "Your display role for this thread has been reset. Your replies will no longer display a role.",
         );
       }
@@ -95,14 +104,18 @@ export default ({ config, commands }: ModuleProps) => {
 
       const role = await resolveRoleInput(args.role as string);
       if (!role || !msg.member.roles.cache.has(role.id)) {
-        thread.postSystemMessage(
+        postSystemMessage(
+          db,
+          thread,
           "No matching role found. Make sure you have the role before trying to set it as your display role in this thread.",
         );
         return;
       }
 
       await setModeratorThreadRoleOverride(msg.member.id, thread.id, role.id);
-      thread.postSystemMessage(
+      postSystemMessage(
+        db,
+        thread,
         `Your display role for this thread has been set to **${role.name}**. You can reset it with \`${config.prefix}role reset\`.`,
       );
     },

@@ -1,13 +1,18 @@
 import type { ModuleProps } from "../plugins";
+import type { Thread } from "../repositories/threads";
+import {
+  findThreadMessageByMessageNumber,
+  getDMChannel,
+  postSystemMessage,
+} from "../thread";
 import * as utils from "../utils";
 
-export default ({ commands }: ModuleProps) => {
+export default ({ db, commands }: ModuleProps) => {
   commands.addInboxThreadCommand(
     "id",
     [],
-    async (_msg, _args, thread) => {
-      if (!thread) return;
-      thread.postSystemMessage(thread.user_id);
+    async (_msg, _args, thread: Thread) => {
+      postSystemMessage(db, thread, thread.user_id);
     },
     { allowSuspended: true },
   );
@@ -15,10 +20,9 @@ export default ({ commands }: ModuleProps) => {
   commands.addInboxThreadCommand(
     "dm_channel_id",
     [],
-    async (_msg, _args, thread) => {
-      if (!thread) return;
-      const dmChannel = await thread.getDMChannel();
-      thread.postSystemMessage(dmChannel.id);
+    async (_msg, _args, thread: Thread) => {
+      const dmChannel = await getDMChannel(thread);
+      postSystemMessage(db, thread, dmChannel.id);
     },
     { allowSuspended: true },
   );
@@ -26,13 +30,19 @@ export default ({ commands }: ModuleProps) => {
   commands.addInboxThreadCommand(
     "message",
     "<messageNumber:number>",
-    async (_msg, args, thread) => {
+    async (_msg, args, thread: Thread) => {
       if (!thread) return;
-      const threadMessage = await thread.findThreadMessageByMessageNumber(
+      const threadMessage = await findThreadMessageByMessageNumber(
+        db,
+        thread,
         args.messageNumber as number,
       );
       if (!threadMessage) {
-        thread.postSystemMessage("No message in this thread with that number");
+        postSystemMessage(
+          db,
+          thread,
+          "No message in this thread with that number",
+        );
         return;
       }
 
@@ -54,7 +64,7 @@ export default ({ commands }: ModuleProps) => {
         `Link: <${messageLink}>`,
       ];
 
-      thread.postSystemMessage(parts.join("\n"));
+      postSystemMessage(db, thread, parts.join("\n"));
     },
     { allowSuspended: true },
   );

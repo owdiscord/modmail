@@ -1,12 +1,13 @@
-import { access, copyFile, unlink, writeFile } from "node:fs/promises";
+import { createWriteStream } from "node:fs";
+import { access, copyFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Readable } from "node:stream";
 import type { Attachment, SendableChannels } from "discord.js";
 import { getSelfUrl } from "../utils";
 
 async function saveLocalAttachment(attachment: Attachment): Promise<string> {
   const targetPath = getLocalAttachmentPath(attachment.id);
-
   try {
     // If the file already exists, resolve immediately
     await access(targetPath);
@@ -16,11 +17,9 @@ async function saveLocalAttachment(attachment: Attachment): Promise<string> {
 
   // Download the attachment
   const downloadResult = await downloadAttachment(attachment);
-
   try {
     // Move the temp file to the attachment folder
     await copyFile(downloadResult.path, targetPath);
-
     // Clean up the temp file
     await downloadResult.cleanup();
   } catch (error) {
@@ -47,13 +46,23 @@ export async function downloadAttachment(attachment: Attachment, tries = 0) {
 
   try {
     const response = await fetch(attachment.url);
-
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
+    if (!response.body) {
+      throw new Error("Response body is empty");
+    }
 
-    // Write the response directly to file
-    await writeFile(filepath, await response.text());
+    // Stream response directly to disk instead of buffering in memory
+    await new Promise<void>((resolve, reject) => {
+      const dest = createWriteStream(filepath);
+      if (!response.body) return reject("There was no response body.");
+
+      Readable.fromWeb(response.body)
+        .pipe(dest)
+        .on("finish", resolve)
+        .on("error", reject);
+    });
 
     return {
       path: filepath,
@@ -72,7 +81,6 @@ export async function downloadAttachment(attachment: Attachment, tries = 0) {
     } catch {
       // Ignore cleanup errors
     }
-
     console.error("Error downloading attachment, retrying");
     return downloadAttachment(attachment, tries + 1);
   }
@@ -108,10 +116,8 @@ export async function createDiscordAttachmentMessage(
         console.error(
           `Attachment storage message could not be created after 3 tries: ${e}`,
         );
-
       return;
     }
-
     return createDiscordAttachmentMessage(channel, file, tries + 1);
   }
 }

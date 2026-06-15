@@ -1,9 +1,10 @@
-import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
 import { getMimeType } from "hono/utils/mime";
+import academy from "./academy";
+import config from "./config";
 import { getLocalAttachmentPath } from "./data/attachments";
 import { formatLog } from "./data/logs";
 import type { Thread } from "./data/Thread";
@@ -11,16 +12,22 @@ import type { ThreadMessage } from "./data/ThreadMessage";
 import { useDb } from "./db";
 import { getMessagesInThread } from "./repositories/threadMessages";
 import { findThreadByID } from "./repositories/threads";
-import academy from "./academy";
 import { Thread as ThreadView } from "./web/view";
-import config from "./config";
 
 const app = new Hono();
 
 const db = useDb();
 
-app.use(cors());
-app.use(secureHeaders());
+app.use(
+  secureHeaders({
+    crossOriginResourcePolicy: "cross-origin",
+  }),
+);
+app.use(
+  cors({
+    origin: ["http://localhost:8800", "http://localhost:1234"],
+  }),
+);
 
 app.route("/academy", academy);
 
@@ -36,12 +43,11 @@ app.get("/style.css", async (_) => {
 
 app.get("/logs/:id", async (c) => {
   const { id } = c.req.param();
-  const thread =
-    (await findThreadByID(db, id))[0] as Thread
+  const thread = (await findThreadByID(db, id))[0] as Thread;
 
   if (!thread) return new Response("Thread not found", { status: 404 });
 
-  const messages = (await getMessagesInThread(db, id)) as ThreadMessage[]
+  const messages = (await getMessagesInThread(db, id)) as ThreadMessage[];
 
   const params = new URL(c.req.url).searchParams;
   const simple = params.get("simple") !== null;
@@ -71,20 +77,23 @@ app.get("/attachments/:id/:filename", async (c) => {
     return c.text("One or more parameters were malformed.");
 
   const attachmentPath = getLocalAttachmentPath(id);
-  const attachmentFile = await readFile(attachmentPath);
+  try {
+    const attachmentFile = await readFile(attachmentPath);
 
-  if (!existsSync(attachmentFile)) return c.notFound();
+    if (!attachmentFile) return c.notFound();
 
-  const contentType = getMimeType(filename);
+    const contentType = getMimeType(filename);
 
-  return new Response(attachmentFile, {
-    headers: {
-      "Content-Type": contentType,
-    },
-  });
+    c.header("Content-Type", contentType);
+    c.header("Cross-Origin-Resource-Policy", "cross-origin");
+
+    return c.body(attachmentFile);
+  } catch (_e) {
+    return c.notFound();
+  }
 });
 
 export default {
   ...app,
-  port: config.web.port
+  port: config.web.port,
 };

@@ -10,7 +10,7 @@ import {
 } from "discord.js";
 import { ThreadStatus } from "../data/constants";
 import { getLogUrl } from "../data/logs";
-import { type Thread } from "../data/Thread";
+import type { Thread } from "../data/Thread";
 import type { DbQuery } from "../db";
 import logger from "../logger";
 import type { ModuleProps } from "../plugins";

@@ -1,9 +1,9 @@
 import type { GuildMember } from "discord.js";
+import type { ModuleProps } from "../plugins";
 import {
   createUserRegistration,
   deregisterUser,
 } from "../repositories/registration";
-import type { ModuleProps } from "../plugins";
 import { Emoji } from "../style";
 import { isSnowflake } from "../utils";
 

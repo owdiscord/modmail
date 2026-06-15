@@ -11,8 +11,8 @@ import {
   getSnippet,
   type Snippet,
 } from "../repositories/snippets";
-import { disableCodeBlocks, postSystemMessageWithFallback } from "../utils";
 import { replyToUser } from "../thread";
+import { disableCodeBlocks, postSystemMessageWithFallback } from "../utils";
 
 export default ({ config, commands, db }: ModuleProps) => {
   if (!config.allowSnippets) return;

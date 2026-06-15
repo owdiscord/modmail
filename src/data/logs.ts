@@ -115,7 +115,7 @@ export const formatLog = async (
       }
 
       if (message.attachments.length > 0)
-        line += `\n\n${JSON.parse(message.attachments).join("\n")}`;
+        line += `\n\n${message.attachments.join("\n")}`;
 
       return line;
     }),

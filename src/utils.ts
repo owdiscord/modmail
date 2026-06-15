@@ -21,8 +21,9 @@ import { publicIp } from "public-ip";
 import { BotError } from "./BotError";
 import bot from "./bot";
 import config from "./config";
-import type Thread from "./data/Thread";
+import type { Thread } from "./data/Thread";
 import logger from "./logger";
+import { postSystemMessage } from "./thread";
 
 const userMentionRegex = /^<@!?([0-9]+?)>$/;
 
@@ -311,12 +312,13 @@ export function getInboxMentionAllowedMentions(): MessageMentionOptions {
 }
 
 export function postSystemMessageWithFallback(
+  db: DbQuery,
   channel: SendableChannels,
   thread: Thread | null = null,
   text: string,
 ) {
   if (thread) {
-    thread.postSystemMessage(text);
+    postSystemMessage(db, thread, text);
     return;
   }
 

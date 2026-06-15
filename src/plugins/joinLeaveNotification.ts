@@ -1,9 +1,9 @@
 import { Events } from "discord.js";
-import * as threads from "../repositories/threads";
-import type { ModuleProps } from "../plugins";
-import * as utils from "../utils";
-import { postSystemMessage } from "../thread";
 import type Thread from "../data/Thread";
+import type { ModuleProps } from "../plugins";
+import * as threads from "../repositories/threads";
+import { postSystemMessage } from "../thread";
+import * as utils from "../utils";
 
 export default ({ bot, config, db }: ModuleProps) => {
   const leaveIgnoreIDs: string[] = [];

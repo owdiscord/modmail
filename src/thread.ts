@@ -1,5 +1,6 @@
 import {
   type Attachment,
+  type Client,
   Collection,
   DiscordAPIError,
   type DMChannel,
@@ -10,37 +11,41 @@ import {
   type GuildMember,
   type HexColorString,
   type Message,
+  MessageActivityType,
   type MessageCreateOptions,
+  type MessageMentionOptions,
   type MessageReference,
+  MessageReferenceType,
+  type MessageResolvable,
+  type MessageSnapshot,
   type ReplyOptions,
   type SendableChannels,
   type User,
-  type MessageMentionOptions,
-  type MessageSnapshot,
-  MessageReferenceType,
-  type MessageResolvable,
-  MessageActivityType,
-  Client,
 } from "discord.js";
 import humanizeDuration from "humanize-duration";
+import { BotError } from "./BotError";
 import bot from "./bot";
 import config from "./config";
+import { saveAttachment } from "./data/attachments";
+import { isBlocked } from "./data/blocked";
 import { ThreadMessageType, ThreadStatus } from "./data/constants";
 import { getModeratorThreadDisplayRoleName } from "./data/displayRoles";
 import { getLogUrl } from "./data/logs";
 import type { ThreadMessage } from "./data/ThreadMessage";
 import { type GuildStatus, userGuildStatus } from "./data/users";
 import type { DbQuery } from "./db";
+import { callAfterNewMessageReceivedHooks } from "./hooks/afterNewMessageReceived";
+import { callAfterThreadCloseHooks } from "./hooks/afterThreadClose";
+import { callAfterThreadCloseScheduleCanceledHooks } from "./hooks/afterThreadCloseScheduleCanceled";
+import { callAfterThreadCloseScheduledHooks } from "./hooks/afterThreadCloseScheduled";
+import { callBeforeNewMessageReceivedHooks } from "./hooks/beforeNewMessageReceived";
 import logger from "./logger";
 import { findNotesByUserId } from "./repositories/notes";
 import {
   getRegisteredUsername,
   getStaffUsername,
 } from "./repositories/registration";
-import {
-  allSnippets as allSnippets,
-  type Snippet,
-} from "./repositories/snippets";
+import { allSnippets, type Snippet } from "./repositories/snippets";
 import * as threadMessages from "./repositories/threadMessages";
 import {
   alertUserForThreadReply,
@@ -55,10 +60,10 @@ import {
   markThreadClosed,
   removeThreadReplyAlert,
   reOpenThread,
+  type StaffReplyData,
   scheduleThreadClosure,
   scheduleThreadSuspension,
   suspendThread,
-  type StaffReplyData,
   type Thread,
 } from "./repositories/threads";
 import {
@@ -78,14 +83,6 @@ import {
   getTimestamp,
   messageContentIsWithinMaxLength,
 } from "./utils";
-import { BotError } from "./BotError";
-import { saveAttachment } from "./data/attachments";
-import { callAfterThreadCloseScheduleCanceledHooks } from "./hooks/afterThreadCloseScheduleCanceled";
-import { callBeforeNewMessageReceivedHooks } from "./hooks/beforeNewMessageReceived";
-import { callAfterNewMessageReceivedHooks } from "./hooks/afterNewMessageReceived";
-import { isBlocked } from "./data/blocked";
-import { callAfterThreadCloseHooks } from "./hooks/afterThreadClose";
-import { callAfterThreadCloseScheduledHooks } from "./hooks/afterThreadCloseScheduled";
 
 async function postToThreadChannel(
   db: DbQuery,
@@ -256,7 +253,7 @@ export async function replyToUser(
 
   // Re-fetch the user to avoid using a stale/partial cached User object,
   // which can cause Discord to reject createDM() with 50035 CHANNEL_RECIPIENT_REQUIRED.
-  let user;
+  let user: User;
   try {
     user = await bot.users.fetch(thread.user_id, { force: true });
   } catch (err) {
@@ -268,10 +265,10 @@ export async function replyToUser(
   let dmChannel: DMChannel | null;
   try {
     dmChannel = await user.createDM(true);
-  } catch (err: any) {
+  } catch (err) {
     // 50035 CHANNEL_RECIPIENT_REQUIRED -- Discord refuses to open a DM with thread user
     // (their account is deleted, disabled, not sharing a guild with the bot, or transient backend issue).
-    if (err?.code === 50035) {
+    if (err instanceof DiscordAPIError && err?.code === 50035) {
       throw new BotError(
         `Unable to open a DM channel with <@${user.id}>. ` +
           `The account may be deleted/disabled or not share a server with the bot.`,
@@ -606,6 +603,7 @@ export async function postSystemMessage(
   message: Message;
   threadMessage: ThreadMessage;
 }> {
+  console.log("Posting system msg");
   message = typeof message === "string" ? { content: message } : message;
 
   const threadMessage: ThreadMessage = {
@@ -641,7 +639,8 @@ export async function postSystemMessage(
   const msg = await postToThreadChannel(db, thread, message);
 
   threadMessage.inbox_message_id = msg.id;
-  await threadMessages.create(db, threadMessage);
+  const v = await threadMessages.create(db, threadMessage);
+  console.log(v);
 
   return {
     message: msg,
@@ -741,6 +740,28 @@ export async function saveChatMessageToLogs(
   thread: Thread,
   msg: Message,
 ) {
+  const embeds = msg.embeds;
+  let messageContent = msg.content;
+
+  if (msg.reference && msg.reference.type === MessageReferenceType.Forward) {
+    const forward = msg.messageSnapshots.first();
+    if (!forward) return;
+
+    for (const embed of forward.embeds) {
+      embeds.push(embed);
+    }
+
+    let textContent = forward.content;
+    if (forward.stickers.size > 0) {
+      textContent += forward.stickers
+        .map((sticker) => `Sticker **[${sticker.name}](${sticker.url})**`)
+        .join("\n");
+    }
+
+    if (textContent.length === 0) textContent = "Message contains only embeds";
+    messageContent = `\n\n> -# *↪ Forwarded from ${forward.guild?.name || "direct messages"}*\n> ${textContent}\n> -# ${forward.url}  •  <t:${Math.round(forward.createdTimestamp / 1000)}:f>`;
+  }
+
   const threadMessage: ThreadMessage = {
     thread_id: thread.id,
     message_type: ThreadMessageType.Chat,
@@ -748,9 +769,10 @@ export async function saveChatMessageToLogs(
     user_name: config.useDisplaynames
       ? msg.author.globalName || msg.author.username
       : msg.author.username,
-    body: msg.content,
+    body: messageContent,
     metadata: {
       attachments: msg.attachments,
+      embeds,
     },
     is_anonymous: false,
     dm_message_id: msg.id,
@@ -772,6 +794,10 @@ export async function saveCommandMessageToLogs(
   thread: Thread,
   msg: Message,
 ) {
+  if (!msg.member) throw new Error("This wasn't sent in the inbox server.");
+  const role_name =
+    (await getModeratorThreadDisplayRoleName(msg.member, thread.id)) || "";
+
   const threadMessage: ThreadMessage = {
     thread_id: thread.id,
     message_type: ThreadMessageType.Command,
@@ -784,15 +810,16 @@ export async function saveCommandMessageToLogs(
     created_at: new Date(),
     is_anonymous: false,
     message_number: 0,
-    role_name: "",
+    role_name,
     attachments: [],
     small_attachments: [],
     dm_channel_id: "",
-    inbox_message_id: "",
+    inbox_message_id: msg.id,
     metadata: {},
     use_legacy_format: false,
   };
-  await threadMessages.create(db, threadMessage);
+
+  return await threadMessages.create(db, threadMessage);
 }
 
 export async function getThreadMessages(
@@ -1257,7 +1284,9 @@ function buildMainGuildFields(
 
   if (member.voice.channelId && !muteStatus) {
     const channelName = member.voice.channel?.name || "unknown";
-    const lastField = fields.at(-1)!;
+    const lastField = fields.at(-1);
+    if (!lastField) throw "Could not get last voice channel";
+
     lastField.value += `\n-# ${separator((member.voice.channel?.name?.length || 10) * 2)}`;
     fields.push({
       name: "In Voice Channel",
@@ -1387,7 +1416,10 @@ export async function sendInfoHeader(
 
   if (muteStatus) {
     embed.setColor(Colours.MuteRed as HexColorString);
-    const lastField = fields.at(-1)!;
+    const lastField = fields.at(-1);
+    if (!lastField)
+      throw "Could not retrieve the field to check for mute status";
+
     lastField.value += `\n-# ${separator(20)}`;
     fields.push({
       name: `${Emoji.Muted} **User is currently muted**\n`,

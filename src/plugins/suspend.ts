@@ -1,11 +1,11 @@
 import { ThreadStatus } from "../data/constants";
+import type { ModuleProps } from "../plugins";
 import {
   findOpenThreadByUserID,
   findSuspendedThreadByChannelId,
   getThreadsThatShouldBeSuspended,
+  suspendThread,
 } from "../repositories/threads";
-import type { ModuleProps } from "../plugins";
-import { humanizeDelay } from "../utils";
 import {
   cancelScheduledSuspend,
   postSystemMessage,
@@ -13,6 +13,7 @@ import {
   suspend,
   unsuspend,
 } from "../thread";
+import { humanizeDelay } from "../utils";
 
 export default ({ db, config, commands }: ModuleProps) => {
   if (!config.allowSuspend) return;
@@ -21,8 +22,10 @@ export default ({ db, config, commands }: ModuleProps) => {
     const threadsToBeSuspended = await getThreadsThatShouldBeSuspended(db);
     for (const thread of threadsToBeSuspended) {
       if (thread.status === ThreadStatus.Open) {
-        await thread.suspend();
-        await thread.postSystemMessage(
+        await suspendThread(db, thread.id);
+        await postSystemMessage(
+          db,
+          thread,
           `**Thread suspended** as scheduled by ${thread.scheduled_suspend_name}. This thread will act as closed until unsuspended with \`${config.prefix}unsuspend\``,
         );
       }

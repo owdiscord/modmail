@@ -6,12 +6,12 @@ import { version as djsVersion } from "discord.js";
 import { BotError } from "./BotError";
 import bot from "./bot";
 import { getPrettyVersion } from "./botVersion";
+import config from "./config";
 import logger from "./logger";
 import { start } from "./main";
 import { migrateAllUp } from "./migrate";
 import { PluginInstallationError } from "./PluginInstallationError";
 import web from "./web";
-import config from "./config";
 
 const nodeVersion = process.versions.node.split(".").map(parseInt) as [
   number,

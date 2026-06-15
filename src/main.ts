@@ -15,18 +15,16 @@ import type { Logger } from "pino";
 import { type Commands, createCommandManager } from "./commands";
 import config from "./config";
 import * as blocked from "./data/blocked";
-import { type Thread, createNewThreadForUser } from "./data/Thread";
+import { ThreadMessageType, ThreadStatus } from "./data/constants";
+import { createNewThreadForUser, type Thread } from "./data/Thread";
 import { type DbQuery, useDb } from "./db";
 import logger from "./logger";
 import { createPluginProps, loadPlugins } from "./plugins";
 import { handleLogPageChange } from "./plugins/logs";
 import { handleSnippet } from "./plugins/snippets";
-import { messageQueue, threadCreationQueue, type SerialQueue } from "./queue";
+import { messageQueue, type SerialQueue, threadCreationQueue } from "./queue";
 import * as threadMessages from "./repositories/threadMessages";
 import * as threads from "./repositories/threads";
-import * as utils from "./utils";
-import { postError } from "./utils";
-import { ThreadMessageType, ThreadStatus } from "./data/constants";
 import {
   closeThread,
   formatMessageAsUserReply,
@@ -38,6 +36,8 @@ import {
   saveCommandMessageToLogs,
   sendSystemMessageToUser,
 } from "./thread";
+import * as utils from "./utils";
+import { postError } from "./utils";
 
 const db = useDb();
 
@@ -511,7 +511,7 @@ async function handleMessageEdit(
     // Only post a system log if the messages are significantly
     // different (Levenshtein distance of more than 2)
     if (threads.levenshteinDistance(oldContent, newContent) > 2)
-      await thread.postSystemMessage(editMessage);
+      await postSystemMessage(db, thread as Thread, editMessage);
   }
 
   if (threadMessage.message_type === ThreadMessageType.Chat) {

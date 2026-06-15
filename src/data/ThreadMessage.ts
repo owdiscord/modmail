@@ -1,4 +1,4 @@
-import { ThreadMessageType } from "./constants";
+import type { ThreadMessageType } from "./constants";
 
 export interface ThreadMessage {
   id?: number;

@@ -1,14 +1,9 @@
 import { Collection } from "discord.js";
-import { getThreadsThatShouldBeClosed } from "../repositories/threads";
+import { getLogUrl } from "../data/logs";
 import logger from "../logger";
 import type { ModuleProps } from "../plugins";
 import * as snippets from "../repositories/snippets";
-import {
-  getLogChannel,
-  humanizeDelay,
-  readMultilineConfigValue,
-} from "../utils";
-import { getDelayFromArgs } from "../utils/time";
+import { getThreadsThatShouldBeClosed } from "../repositories/threads";
 import {
   buildCloseEmbed,
   cancelScheduledClose,
@@ -17,7 +12,12 @@ import {
   scheduleClose,
   sendSystemMessageToUser,
 } from "../thread";
-import { getLogUrl } from "../data/logs";
+import {
+  getLogChannel,
+  humanizeDelay,
+  readMultilineConfigValue,
+} from "../utils";
+import { getDelayFromArgs } from "../utils/time";
 
 export default ({ config, commands, db }: ModuleProps) => {
   // Check for threads that are scheduled to be closed and close them
@@ -192,7 +192,7 @@ export default ({ config, commands, db }: ModuleProps) => {
           msg.reference,
         );
       } catch (e) {
-        thread.postSystemMessage({
+        postSystemMessage(db, thread, {
           content: `Failed to send message to user: ${e}`,
         });
       }
@@ -201,15 +201,15 @@ export default ({ config, commands, db }: ModuleProps) => {
         // default to 2 minutes
         const delay = (await getDelayFromArgs(opts)) || 2 * 60 * 1000;
 
-        await thread.scheduleClose(delay, msg.author, false);
+        await scheduleClose(db, thread, delay, msg.author, false);
 
-        thread.postSystemMessage({
+        postSystemMessage(db, thread, {
           content: `Thread is now scheduled to be finished in ${humanizeDelay(delay)}. Use \`${config.prefix}close cancel\` to cancel.`,
         });
 
         return;
       } catch (e: unknown) {
-        thread.postSystemMessage({
+        postSystemMessage(db, thread, {
           content: `${e}`,
         });
 
