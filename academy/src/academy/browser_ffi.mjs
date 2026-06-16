@@ -9,3 +9,7 @@ export function set_timeout(delay, fn) {
 export function set_timeout_async(delay, fn) {
   setTimeout(async () => fn, delay);
 }
+
+export function is_same_node(element_one, element_two) {
+  return element_one.isSameNode(element_two);
+}

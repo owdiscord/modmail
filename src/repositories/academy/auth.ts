@@ -57,7 +57,7 @@ export function invalidateCachedSession(id: string) {
  */
 
 // Sessions last 1 week, aka 7 days x 24 hours x 60 seconds x 1000 milliseconds
-const sessionExpiry = 7 * 24 * 60 * 1000;
+const sessionExpiry = 7 * 24 * 60 * 60 * 1000;
 
 // Create a new session and return the ID
 export async function createSession(

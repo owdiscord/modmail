@@ -23,6 +23,7 @@ import {
 import logger from "../logger";
 import { createMiddleware } from "hono/factory";
 import { getWaveDetails } from "../repositories/academy/waves";
+import { getWaveThreads } from "../repositories/academy/threads";
 
 const app = new Hono<{ Variables: { session: Session; session_id: string } }>();
 const sql = useDb();
@@ -251,33 +252,38 @@ app.get("/api/avatar/:snowflake", async (c) => {
   }
 });
 
-app.get("/api/threads", async (c) => {
-  const threads = await sql`SELECT
-      t.user_name,
-      t.user_id,
-      t.id,
-      UNIX_TIMESTAMP(t.created_at) AS created_at,
-      CASE t.status
-        WHEN 1 THEN 'open'
-        WHEN 2 THEN 'closed'
-        ELSE 'unknown'
-      END as status,
-      COUNT(CASE WHEN m.message_type = 3 THEN 1 END) as reply_messages,
-      COUNT(CASE WHEN m.message_type = 4 THEN 1 END) as user_messages,
-      COUNT(CASE WHEN m.message_type = 2 THEN 1 END) as internal_messages,
-      GROUP_CONCAT(DISTINCT m.user_id ORDER BY m.user_id SEPARATOR '|') AS staff_ids
-    FROM threads t
-      LEFT JOIN thread_messages m ON m.thread_id = t.id
-      WHERE t.status < 3
-      GROUP BY t.id
-      ORDER BY t.created_at DESC`;
+app.get("/api/threads", authMiddleware, async (c) => {
+  const { wave_id } = c.get("session");
+  const threads = await getWaveThreads(sql, wave_id);
 
-  return c.json(
-    threads.map((t) => ({
-      ...t,
-      staff_ids: t.staff_ids.split("|").filter((id: string) => id.length),
-    })),
-  );
+  return c.json(threads);
+
+  // const threads = await sql`SELECT
+  //     t.user_name,
+  //     t.user_id,
+  //     t.id,
+  //     UNIX_TIMESTAMP(t.created_at) AS created_at,
+  //     CASE t.status
+  //       WHEN 1 THEN 'open'
+  //       WHEN 2 THEN 'closed'
+  //       ELSE 'unknown'
+  //     END as status,
+  //     COUNT(CASE WHEN m.message_type = 3 THEN 1 END) as reply_messages,
+  //     COUNT(CASE WHEN m.message_type = 4 THEN 1 END) as user_messages,
+  //     COUNT(CASE WHEN m.message_type = 2 THEN 1 END) as internal_messages,
+  //     GROUP_CONCAT(DISTINCT m.user_id ORDER BY m.user_id SEPARATOR '|') AS staff_ids
+  //   FROM threads t
+  //     LEFT JOIN thread_messages m ON m.thread_id = t.id
+  //     WHERE t.status < 3
+  //     GROUP BY t.id
+  //     ORDER BY t.created_at DESC`;
+  //
+  // return c.json(
+  //   threads.map((t) => ({
+  //     ...t,
+  //     staff_ids: t.staff_ids.split("|").filter((id: string) => id.length),
+  //   })),
+  // );
 });
 
 app.get("/api/threads/:id", async (c) => {

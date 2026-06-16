@@ -22,6 +22,8 @@
 
   --color-case-blue: #3498db;
 
+  --color-blurple-500: #5865f2;
+
   --color-tag-bg: #40446b;
   --color-tag-fg: #c9d3fb;
 
@@ -119,5 +121,58 @@ body {
   & h6 {
     color: var(--color-gray-400);
     font-size: .9rem;
+  }
+}
+
+.form-row {
+  &:not(:last-child) {
+    margin-bottom: calc(var(--spacing) * 4);
+  }
+
+  & label {
+    display: block;
+    color: var(--color-gray-300);
+    margin-bottom: calc(var(--spacing) * 1);
+    font-size: var(--text-sm);
+  }
+
+  & input,
+  & select,
+  & textarea {
+    display: block;
+    width: 100%;
+    background: var(--color-gray-950);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-gray-800);
+    padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 4);
+    color: var(--color-white);
+    transition-property: border-color, outline;
+    transition-duration: var(--default-transition-duration);
+    transition-timing-function: var(--default-transition-timing-function);
+    outline: --alpha(var(--color-blurple-500) / 0%) 2px solid;
+
+    &:focus {
+      outline: --alpha(var(--color-blurple-500) / 20%) 2px solid;
+      border-color: var(--color-blurple-500);
+    }
+  }
+
+  & button[type="submit"] {
+    background: var(--color-blurple-500);
+    border-radius: var(--radius-md);
+    padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 4);
+    color: var(--color-white);
+    width: 100%;
+    display: block;
+    opacity: 1;
+    transition-property: opacity;
+    transition-duration: var(--default-transition-duration);
+    transition-timing-function: var(--default-transition-timing-function);
+    cursor: pointer;
+    font-weight: var(--font-weight-semibold);
+
+    &:hover {
+      opacity: .8;
+    }
   }
 }

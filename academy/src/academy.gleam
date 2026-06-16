@@ -21,7 +21,6 @@ import lustre/event
 import modem
 import rsvp
 
-// const base_url = "http://localhost:8800"
 const base_url = ""
 
 pub fn main() {
@@ -119,6 +118,7 @@ type ThreadMsgKind {
   IncomingMsg
   OutgoingMsg
   SystemMsg
+  CommandMsg
 }
 
 type ThreadRole {
@@ -132,6 +132,7 @@ type ThreadRole {
 
 type ThreadMsg {
   ThreadMsg(
+    id: Int,
     kind: ThreadMsgKind,
     role: ThreadRole,
     anonymous: Bool,
@@ -150,12 +151,14 @@ fn message_kind_decoder() -> decode.Decoder(ThreadMsgKind) {
     2 -> decode.success(InternalMsg)
     3 -> decode.success(IncomingMsg)
     4 -> decode.success(OutgoingMsg)
+    6 -> decode.success(CommandMsg)
     _ -> decode.success(SystemMsg)
     // decode.failure(SystemMsg, "MessageKind decoder")
   }
 }
 
 fn thread_msg_decoder() -> decode.Decoder(ThreadMsg) {
+  use id <- decode.field("id", decode.int)
   use kind <- decode.field("message_type", message_kind_decoder())
   use role <- decode.field(
     "role_name",
@@ -180,6 +183,7 @@ fn thread_msg_decoder() -> decode.Decoder(ThreadMsg) {
   use attachments <- decode.field("attachments", decode.list(decode.string))
 
   decode.success(ThreadMsg(
+    id:,
     kind:,
     role:,
     anonymous:,
@@ -285,6 +289,11 @@ type Toast {
   ToastWarning(String)
 }
 
+type Modal {
+  ClosedModal
+  ThreadIssueModal(thread_id: String, message_id: Int, mod_id: String)
+}
+
 type Model {
   Model(
     route: Route,
@@ -307,6 +316,8 @@ type Model {
     threads_open: Bool,
     threads_closed: Bool,
     thread_trainee: Option(String),
+    view_commands: Bool,
+    modal: Modal,
   )
 }
 
@@ -363,6 +374,9 @@ fn init(_) -> #(Model, Effect(Message)) {
       threads_open: True,
       threads_closed: True,
       thread_trainee: None,
+      view_commands: False,
+      modal: ThreadIssueModal("a", 0, "c"),
+      // modal: ClosedModal,
     ),
     effect.batch([
       modem.init(on_url_change),
@@ -389,12 +403,11 @@ type Message {
 
   // User initiated actions
   UserChangedThreadOpenFilter(Bool)
-
   UserChangedThreadClosedFilter(Bool)
-
   UserChangedThreadTraineeFilter(String)
-
   UserWroteThreadFilter(String)
+  UserPromptedThreadIssue(thread_id: String, message_id: Int, mod_id: String)
+  UserClosedModal
 }
 
 fn on_url_change(uri: uri.Uri) -> Message {
@@ -509,6 +522,13 @@ fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
       Model(..model, thread_filter: filter),
       effect.none(),
     )
+
+    UserPromptedThreadIssue(thread_id:, message_id:, mod_id:) -> #(
+      Model(..model, modal: ThreadIssueModal(thread_id, message_id, mod_id)),
+      effect.none(),
+    )
+
+    UserClosedModal -> #(Model(..model, modal: ClosedModal), effect.none())
   }
 }
 
@@ -646,8 +666,8 @@ fn view(model: Model) -> Element(Message) {
                 ),
               ])
 
-            Thread(content: option.Some(ModmailThread(messages:, ..)), ..) ->
-              thread_view(model, messages)
+            Thread(content: option.Some(thread), ..) ->
+              thread_view(model, thread)
 
             Threads ->
               html.div([class("p-10 text-center text-gray-300 text-xl")], [
@@ -687,6 +707,116 @@ fn view(model: Model) -> Element(Message) {
             )
           }
         }),
+      ),
+      html.div(
+        [
+          on_direct_click(UserClosedModal),
+          class(
+            "fixed inset-0 bg-gray-950/80 flex items-center justify-center transition-opacity",
+          ),
+          attribute.classes([
+            #("opacity-0 pointer-events-none", model.modal == ClosedModal),
+          ]),
+        ],
+        [
+          case model.modal {
+            ClosedModal -> element.none()
+            ThreadIssueModal(thread_id:, message_id:, mod_id:) ->
+              html.div(
+                [
+                  class(
+                    "bg-gray-900 border border-gray-800 rounded-md max-w-xl w-full",
+                  ),
+                ],
+                [
+                  html.header(
+                    [
+                      class(
+                        "p-5 flex items-center gap-3 flex-wrap justify-between",
+                      ),
+                    ],
+                    [
+                      html.h4([class("font-semibold text-white text-xl")], [
+                        html.text("Raise an issue"),
+                      ]),
+                      html.button(
+                        [
+                          event.on_click(UserClosedModal),
+                          class("cursor-pointer"),
+                        ],
+                        [
+                          html.text("X"),
+                        ],
+                      ),
+                    ],
+                  ),
+                  html.form([class("px-5 pb-5"), attribute.method("post")], [
+                    html.input([
+                      attribute.type_("hidden"),
+                      attribute.name("thread_id"),
+                      attribute.value(thread_id),
+                    ]),
+                    html.input([
+                      attribute.type_("hidden"),
+                      attribute.name("message_id"),
+                      attribute.value(int.to_string(message_id)),
+                    ]),
+                    html.input([
+                      attribute.type_("hidden"),
+                      attribute.name("mod_id"),
+                      attribute.value(mod_id),
+                    ]),
+                    html.div([class("form-row")], [
+                      html.label([attribute.for("concern")], [
+                        html.text("Categorize your concern"),
+                      ]),
+                      html.select(
+                        [attribute.id("concern"), attribute.name("concern")],
+                        [
+                          html.option(
+                            [attribute.value("bad_response")],
+                            "Poorly communicated response",
+                          ),
+                          html.option(
+                            [attribute.value("against_policy")],
+                            "Against our policies",
+                          ),
+                          html.option(
+                            [attribute.value("oversharing")],
+                            "Oversharing information",
+                          ),
+                          html.option(
+                            [attribute.value("argumentative")],
+                            "Argumentative",
+                          ),
+                        ],
+                      ),
+                    ]),
+
+                    html.div([class("form-row")], [
+                      html.label([attribute.for("thoughts")], [
+                        html.text("Briefly describe your thoughts"),
+                      ]),
+                      html.textarea(
+                        [
+                          attribute.id("thoughts"),
+                          attribute.name("thoughts"),
+                          attribute.rows(3),
+                        ],
+                        "",
+                      ),
+                    ]),
+
+                    html.div([class("form-row submission-row")], [
+                      html.button([attribute.type_("submit")], [
+                        html.text("Finish Raising"),
+                      ]),
+                    ]),
+                  ]),
+                ],
+              )
+          },
+        ],
       ),
     ],
   )
@@ -1256,19 +1386,20 @@ fn stats_view(model: Model) {
   ])
 }
 
-fn thread_view(model: Model, messages: List(ThreadMsg)) {
+fn thread_view(model: Model, thread: ModmailThread) {
   html.div([class("py-6 block h-full overflow-y-auto")], [
     keyed.ul(
       [class("grid")],
-      list.index_map(messages, fn(message, i) {
+      list.index_map(thread.messages, fn(message, i) {
         #(
           "msg#" <> message.user_id <> int.to_string(i),
           html.li(
             [
               class(
-                "flex gap-3 px-8 py-3 transition-colors hover:bg-gray-900 "
+                "flex gap-3 px-8 py-3 transition-colors hover:bg-gray-900 relative group "
                 <> case message.kind {
                   InternalMsg -> "bg-gray-900/50"
+                  CommandMsg if !model.view_commands -> "hidden"
                   _ -> ""
                 },
               ),
@@ -1312,6 +1443,7 @@ fn thread_view(model: Model, messages: List(ThreadMsg)) {
                           IncomingMsg -> "From User"
                           OutgoingMsg -> "To User"
                           SystemMsg -> "System"
+                          CommandMsg -> "Command"
                         }),
                       ],
                     ),
@@ -1342,6 +1474,20 @@ fn thread_view(model: Model, messages: List(ThreadMsg)) {
                     )
                 },
               ]),
+              html.button(
+                [
+                  event.on_click(UserPromptedThreadIssue(
+                    thread.id,
+                    message.id,
+                    message.user_id,
+                  )),
+                  attribute.data("tooltip", "Raise Issue"),
+                  class(
+                    "absolute top-0 right-8 shadow-sm bg-gray-900 border border-gray-800 rounded-sm p-2 -translate-y-1/2 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto cursor-pointer",
+                  ),
+                ],
+                [icons.issues([class("size-4")])],
+              ),
             ],
           ),
         )
@@ -1488,6 +1634,22 @@ fn add_toast(toast: Toast) -> Effect(Message) {
 fn remove_toast_after(id: Int, delay: Int) -> Effect(Message) {
   use dispatch <- effect.from
   browser.set_timeout(delay, fn() { dispatch(ToastRemoved(id)) })
+}
+
+// Custom events
+
+fn on_direct_click(msg: msg) -> attribute.Attribute(msg) {
+  let decoder = {
+    use target <- decode.field("target", decode.dynamic)
+    use current <- decode.field("currentTarget", decode.dynamic)
+
+    case browser.is_same_node(target, current) {
+      True -> decode.success(msg)
+      False -> decode.failure(msg, "targets did not match")
+    }
+  }
+
+  event.on("click", decoder)
 }
 
 // Utils
