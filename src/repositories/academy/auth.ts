@@ -1,11 +1,11 @@
-import type { RowDataPacket } from "mysql2";
 import type { DbQuery } from "../../db";
 import { v7 } from "uuid";
 import logger from "../../logger";
 
 export interface Session {
-  discord_id: string;
+  user_id: number;
   wave_id: number;
+  role: string;
   expires_at: number;
 }
 
@@ -62,7 +62,7 @@ const sessionExpiry = 7 * 24 * 60 * 1000;
 // Create a new session and return the ID
 export async function createSession(
   sql: DbQuery,
-  discord_id: string,
+  user_id: number,
   wave_id: number,
 ): Promise<{ id: string; expires: Date } | null> {
   try {
@@ -72,12 +72,12 @@ export async function createSession(
 
     await sql`INSERT INTO academy_sessions (
     id,
-    discord_id,
+    user_id,
     wave_id,
     expires_at
   ) VALUES (
     ${id},
-    ${discord_id},
+    ${user_id},
     ${wave_id},
     ${expires}
   )`;
@@ -95,7 +95,7 @@ export async function getSessionByID(
   session_id: string,
 ): Promise<Session | null> {
   const res =
-    await sql`SELECT id, discord_id, wave_id, expires_at FROM academy_sessions WHERE id = ${session_id} AND expires_at > NOW()`;
+    await sql`SELECT s.id, s.user_id, s.wave_id, s.expires_at, u.role FROM academy_sessions s INNER JOIN academy_staff u ON u.id = s.user_id WHERE s.id = ${session_id} AND expires_at > NOW()`;
 
   return res[0] ? (res[0] as Session) : null;
 }
@@ -108,7 +108,7 @@ export async function getSessionByDiscordID(
   wave_id: number,
 ): Promise<Session | null> {
   const res =
-    await sql`SELECT id, discord_id, wave_id, expires_at FROM academy_sessions WHERE discord_id = ${discord_id} AND wave_id = ${wave_id}`;
+    await sql`SELECT s.id, s.discord_id, s.wave_id, s.expires_at, u.role FROM academy_sessions s INNER JOIN academy_staff u ON u.id = s.user_id WHERE s.user_id = ${discord_id} AND s.wave_id = ${wave_id}`;
 
   return res[0] ? (res[0] as Session) : null;
 }
@@ -120,12 +120,31 @@ export async function deleteSessionByID(sql: DbQuery, id: string) {
 
 // Ensure a given discord ID (snowflake) has permission to access at least one
 // wave, returning the latest wave ID.
-export async function waveForDiscordID(
+export async function latestUserForDiscordID(
   sql: DbQuery,
   discord_id: string,
-): Promise<number | null> {
+): Promise<{ id: number; wave_id: number; role: string } | null> {
   const res =
-    await sql`SELECT wave_id FROM academy_staff WHERE snowflake = ${discord_id} ORDER BY wave_id DESC LIMIT 1`;
+    await sql`SELECT id, wave_id, role FROM academy_staff WHERE snowflake = ${discord_id} ORDER BY wave_id DESC LIMIT 1`;
 
-  return res[0]?.wave_id || null;
+  return (res[0] as { id: number; wave_id: number; role: string }) || null;
+}
+
+// Get the basic details for a single user
+export async function getUserDetails(
+  sql: DbQuery,
+  wave_id: number,
+  user_id: number,
+) {
+  const res =
+    await sql`SELECT snowflake, username, display_name, role FROM academy_staff WHERE id = ${user_id} AND wave_id = ${wave_id}`;
+
+  return (
+    (res[0] as {
+      snowflake: string;
+      username: string;
+      display_name: string;
+      role: string;
+    }) || null
+  );
 }

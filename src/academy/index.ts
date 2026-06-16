@@ -16,13 +16,15 @@ import {
   getCachedSession,
   getSessionByID,
   setCachedSession,
-  waveForDiscordID,
+  latestUserForDiscordID,
   type Session,
+  getUserDetails,
 } from "../repositories/academy/auth";
 import logger from "../logger";
 import { createMiddleware } from "hono/factory";
+import { getWaveDetails } from "../repositories/academy/waves";
 
-const app = new Hono<{ Variables: { session: Session } }>();
+const app = new Hono<{ Variables: { session: Session; session_id: string } }>();
 const sql = useDb();
 
 const sessionCookie = "academy_session";
@@ -37,6 +39,8 @@ const authMiddleware = createMiddleware(async (c, next) => {
         "You are not authenticated and cannot view this page. You may need to redirect.",
       url: "/academy/api/auth/redirect",
     });
+
+  c.set("session_id", sessionID);
 
   const cached = getCachedSession(sessionID);
   if (cached) {
@@ -139,8 +143,8 @@ app.get("/api/auth/callback", async (c) => {
     global_name: string;
   };
 
-  const waveID = await waveForDiscordID(sql, discordID);
-  if (!waveID) {
+  const user = await latestUserForDiscordID(sql, discordID);
+  if (!user) {
     logger.warn(
       { discordID, global_name, req: c.req },
       "an unknown user tried to access academy",
@@ -152,17 +156,21 @@ app.get("/api/auth/callback", async (c) => {
     );
   }
 
-  const session = await createSession(sql, discordID, waveID);
+  const session = await createSession(sql, user.id, user.wave_id);
   if (!session) {
-    logger.error({ discordID, waveID }, "failed to create session");
+    logger.error(
+      { discordID, user_id: user.id, wave: user.wave_id },
+      "failed to create session",
+    );
 
     return c.json({ error: "Failed to create this session." }, 401);
   }
 
   // Cache the session
   setCachedSession(session.id, {
-    discord_id: discordID,
-    wave_id: waveID,
+    user_id: user.id,
+    wave_id: user.wave_id,
+    role: user.role,
     expires_at: session.expires.getTime(),
   });
 
@@ -178,17 +186,27 @@ app.get("/api/auth/callback", async (c) => {
   return c.redirect("/academy");
 });
 
-app.get("/api/auth/me", authMiddleware, (c) => {
-  const session = c.get("session");
-  return c.json(session);
+app.get("/api/auth/me", authMiddleware, async (c) => {
+  const { user_id, wave_id } = c.get("session");
+  try {
+    const res = await getUserDetails(sql, user_id, wave_id);
+    return c.json(res);
+  } catch (e) {
+    logger.error(e);
+    return c.json({ error: "user not found" }, 404);
+  }
 });
 
-app.get("/api/trainees", (c) => {
-  return c.json([]);
-});
+app.get("/api/wave", authMiddleware, async (c) => {
+  const { wave_id } = c.get("session");
 
-app.get("/api/config", (c) => {
-  return c.json({});
+  try {
+    const details = await getWaveDetails(sql, wave_id);
+    return c.json(details);
+  } catch (e) {
+    logger.error(e);
+    return c.json({ error: "wave details not found" }, 404);
+  }
 });
 
 app.get("/api/questions", async (c) => {

@@ -7,6 +7,8 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
+import gleam/time/calendar
+import gleam/time/timestamp
 import gleam/uri
 import lustre
 import lustre/attribute.{attribute, class}
@@ -40,14 +42,76 @@ type Route {
   NotFound(path: List(String))
 }
 
+type WaveState {
+  WaveInterviews
+  WaveHelper
+  WaveHistoric
+}
+
 type Trainee {
   Trainee(
     id: String,
     name: String,
     thread_participation_count: Int,
     message_count: Int,
-    issue_count: Int,
+    case_count: Int,
   )
+}
+
+fn trainee_decoder() -> decode.Decoder(Trainee) {
+  use id <- decode.field("id", decode.string)
+  use name <- decode.field("name", decode.string)
+  use thread_participation_count <- decode.field(
+    "thread_participation_count",
+    decode.int,
+  )
+  use message_count <- decode.field("message_count", decode.int)
+  use case_count <- decode.field("case_count", decode.int)
+
+  decode.success(Trainee(
+    id:,
+    name:,
+    thread_participation_count:,
+    message_count:,
+    case_count:,
+  ))
+}
+
+fn wave_state_decoder() -> decode.Decoder(WaveState) {
+  use variant <- decode.then(decode.string)
+  case variant {
+    "interviews" -> decode.success(WaveInterviews)
+    "helper" -> decode.success(WaveHelper)
+    "historic" -> decode.success(WaveHistoric)
+    _ -> decode.failure(WaveInterviews, "WaveState")
+  }
+}
+
+type Wave {
+  Wave(
+    id: Int,
+    state: WaveState,
+    created_at: timestamp.Timestamp,
+    begin_at: timestamp.Timestamp,
+    close_at: timestamp.Timestamp,
+    trainees: List(Trainee),
+  )
+}
+
+fn timestamp_decoder() -> decode.Decoder(timestamp.Timestamp) {
+  use num <- decode.then(decode.int)
+  decode.success(timestamp.from_unix_seconds(num))
+}
+
+fn wave_decoder() -> decode.Decoder(Wave) {
+  use id <- decode.field("id", decode.int)
+  use state <- decode.field("state", wave_state_decoder())
+  use created_at <- decode.field("created_at", timestamp_decoder())
+  use begin_at <- decode.field("begin_at", timestamp_decoder())
+  use close_at <- decode.field("close_at", timestamp_decoder())
+  use trainees <- decode.field("trainees", decode.list(trainee_decoder()))
+
+  decode.success(Wave(id:, state:, created_at:, begin_at:, close_at:, trainees:))
 }
 
 type ThreadMsgKind {
@@ -209,7 +273,7 @@ type User {
 }
 
 fn user_decoder() -> decode.Decoder(User) {
-  use id <- decode.field("id", decode.string)
+  use id <- decode.field("snowflake", decode.string)
   use display_name <- decode.field("display_name", decode.string)
   use role <- decode.field("role", user_role_decoder())
   decode.success(User(id:, display_name:, role:))
@@ -225,7 +289,8 @@ type Model {
   Model(
     route: Route,
     toasts: dict.Dict(Int, Toast),
-    wave: String,
+    wave_id: Int,
+    wave_name: String,
     loading: Bool,
     user: User,
     issues: List(String),
@@ -278,44 +343,18 @@ fn init(_) -> #(Model, Effect(Message)) {
       route:,
       toasts: dict.new(),
       loading: False,
-      wave: "2026 — June",
+      wave_id: 1,
+      wave_name: "Unknown Wave",
       cases: [],
-      user: User(id: "", display_name: "Isaac", role: UnknownUser),
+      user: User(id: "", display_name: "Unknown", role: UnknownUser),
       issues: [
         "Bleh",
         "Bleh",
         "Bleh",
         "Bleh",
       ],
-      threads: [
-        ModmailThread(
-          id: "ed381ca7-5a8b-4546-9bdd-247ec0531ebc",
-          user_messages: 3,
-          reply_messages: 10,
-          internal_messages: 4000,
-          staff_ids: ["123", "123", "123"],
-          user_name: "au.ra",
-          user_id: "1",
-          messages: [],
-          status: ThreadOpen,
-        ),
-      ],
-      trainees: [
-        Trainee(
-          id: "164564849915985922",
-          name: "Dray",
-          thread_participation_count: 12,
-          message_count: 100,
-          issue_count: 2,
-        ),
-        Trainee(
-          id: "204084691425427466",
-          name: "Isaac",
-          thread_participation_count: 12,
-          message_count: 100,
-          issue_count: 2,
-        ),
-      ],
+      threads: [],
+      trainees: [],
       interview_questions: [],
       total_cases: 0,
       total_threads: 0,
@@ -325,7 +364,12 @@ fn init(_) -> #(Model, Effect(Message)) {
       threads_closed: True,
       thread_trainee: None,
     ),
-    effect.batch([modem.init(on_url_change), get_user(), route_effects(route)]),
+    effect.batch([
+      modem.init(on_url_change),
+      get_wave(),
+      get_user(),
+      route_effects(route),
+    ]),
   )
 }
 
@@ -337,6 +381,7 @@ type Message {
   ToastRemoved(Int)
 
   // Api returning
+  ApiReturnedWave(Result(Wave, rsvp.Error(String)))
   ApiReturnedUser(Result(User, rsvp.Error(String)))
   ApiReturnedThreads(Result(List(ModmailThread), rsvp.Error(String)))
   ApiReturnedThread(Result(ModmailThread, rsvp.Error(String)))
@@ -394,6 +439,20 @@ fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
     )
 
     // API returning messages
+    ApiReturnedWave(Ok(wave)) -> {
+      let #(calendar.Date(year:, month:, ..), _) =
+        timestamp.to_calendar(wave.begin_at, calendar.local_offset())
+      let wave_name =
+        calendar.month_to_string(month) <> " - " <> int.to_string(year)
+
+      #(
+        Model(..model, trainees: wave.trainees, wave_id: wave.id, wave_name:),
+        effect.none(),
+      )
+    }
+
+    ApiReturnedWave(Error(err)) -> #(model, add_toast(rsvp_err_to_toast(err)))
+
     ApiReturnedUser(Ok(user)) -> #(Model(..model, user: user), effect.none())
 
     ApiReturnedUser(Error(err)) -> #(model, add_toast(rsvp_err_to_toast(err)))
@@ -470,7 +529,7 @@ fn view(model: Model) -> Element(Message) {
               html.div([], [
                 html.h3([], [html.text("Academy")]),
                 html.p([class("font-bold text-xs text-gray-400")], [
-                  html.text(model.wave),
+                  html.text(model.wave_name),
                 ]),
               ]),
               icons.chevron_down([class("size-4 ml-auto")]),
@@ -482,10 +541,11 @@ fn view(model: Model) -> Element(Message) {
                 ),
               ],
               [
-                html.li([], [html.button([], [html.text("2026 — June")])]),
-                html.li([], [html.button([], [html.text("2025 — December")])]),
-                html.li([], [html.button([], [html.text("2023 — Jure")])]),
-                html.li([], [html.button([], [html.text("2021 — Septober")])]),
+                html.li([], [html.text("Coming soon...")]),
+                // html.li([], [html.button([], [html.text("2026 — June")])]),
+              // html.li([], [html.button([], [html.text("2025 — December")])]),
+              // html.li([], [html.button([], [html.text("2023 — Jure")])]),
+              // html.li([], [html.button([], [html.text("2021 — Septober")])]),
               ],
             ),
           ]),
@@ -556,7 +616,7 @@ fn view(model: Model) -> Element(Message) {
                   ),
                   html.ul([class("absolute top-full right-0 bg-black")], [
                     html.li([], [
-                      html.a([attribute.href("/academy/logout")], [
+                      html.a([attribute.href("/academy/api/auth/logout")], [
                         html.text("Logout"),
                       ]),
                     ]),
@@ -1183,8 +1243,8 @@ fn stats_view(model: Model) {
                     <> " messages, "
                     <> int.to_string(trainee.thread_participation_count)
                     <> " threads participated in, "
-                    <> int.to_string(trainee.issue_count)
-                    <> " issues",
+                    <> int.to_string(trainee.case_count)
+                    <> " cases",
                   ),
                 ]),
               ]),
@@ -1372,6 +1432,11 @@ fn issues_view(model: Model) {
 //
 // Data functions
 //
+
+fn get_wave() -> Effect(Message) {
+  let handler = rsvp.expect_json(wave_decoder(), ApiReturnedWave)
+  rsvp.get(base_url <> "/academy/api/wave", handler)
+}
 
 fn get_user() -> Effect(Message) {
   let handler = rsvp.expect_json(user_decoder(), ApiReturnedUser)

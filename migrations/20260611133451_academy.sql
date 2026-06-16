@@ -14,7 +14,12 @@ CREATE TABLE IF NOT EXISTS academy_waves (
 CREATE TABLE IF NOT EXISTS academy_staff (
   id INT AUTO_INCREMENT PRIMARY KEY,
   snowflake VARCHAR(22) NOT NULL,
+  username VARCHAR(128) NOT NULL,
   display_name VARCHAR(512) NOT NULL,
+  thread_participation_count INT NOT NULL DEFAULT 0,
+  message_count INT NOT NULL DEFAULT 0,
+  thread_count INT NOT NULL DEFAULT 0,
+  case_count INT NOT NULL DEFAULT 0,
   wave_id INT NOT NULL REFERENCES academy_waves(id),
   -- One of 'trainee', 'moderator', 'helper', or 'admin'
   role VARCHAR(64) NOT NULL DEFAULT 'trainee'
@@ -41,7 +46,7 @@ CREATE TABLE IF NOT EXISTS academy_interview_questions (
 
 CREATE TABLE IF NOT EXISTS academy_sessions (
   id VARCHAR(128) NOT NULL,
-  discord_id VARCHAR(22) REFERENCES academy_staff(snowflake),
+  user_id INT REFERENCES academy_staff(id),
   wave_id INT REFERENCES academy_waves(id),
   expires_at TIMESTAMP NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -49,7 +54,7 @@ CREATE TABLE IF NOT EXISTS academy_sessions (
 
   PRIMARY KEY (id),
   KEY idx_expires_at (expires_at),
-  KEY idx_discord_id (discord_id)
+  KEY idx_user_id (user_id)
 );
 
 -- migrate:down
