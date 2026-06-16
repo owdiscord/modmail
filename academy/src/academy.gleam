@@ -1,5 +1,6 @@
+import academy/browser
 import academy/icons
-import academy/meta
+import gleam/dict
 import gleam/dynamic/decode
 import gleam/int
 import gleam/list
@@ -18,7 +19,8 @@ import lustre/event
 import modem
 import rsvp
 
-const base_url = "http://localhost:8800"
+// const base_url = "http://localhost:8800"
+const base_url = ""
 
 pub fn main() {
   let app = lustre.application(init, update, view)
@@ -29,7 +31,7 @@ pub fn main() {
 
 type Route {
   Threads
-  Thread(ModmailThread)
+  Thread(id: String, content: option.Option(ModmailThread))
   Cases
   Case(id: Int)
   Stats
@@ -68,24 +70,119 @@ type ThreadMsg {
   ThreadMsg(
     kind: ThreadMsgKind,
     role: ThreadRole,
+    anonymous: Bool,
     user_id: String,
     user_name: String,
-    content: String,
-    time: String,
+    created_at: Int,
+    body: String,
+    attachments: List(String),
   )
+}
+
+fn message_kind_decoder() -> decode.Decoder(ThreadMsgKind) {
+  use num <- decode.then(decode.int)
+  case num {
+    1 -> decode.success(SystemMsg)
+    2 -> decode.success(InternalMsg)
+    3 -> decode.success(IncomingMsg)
+    4 -> decode.success(OutgoingMsg)
+    _ -> decode.success(SystemMsg)
+    // decode.failure(SystemMsg, "MessageKind decoder")
+  }
+}
+
+fn thread_msg_decoder() -> decode.Decoder(ThreadMsg) {
+  use kind <- decode.field("message_type", message_kind_decoder())
+  use role <- decode.field(
+    "role_name",
+    decode.map(decode.string, fn(role) {
+      case role {
+        "admin" -> AdminRole
+        "helper" -> HelperRole
+        "mod" | "moderator" -> ModRole
+        "trainee" -> TraineeRole
+        _ -> SystemRole
+      }
+    }),
+  )
+  use anonymous <- decode.field(
+    "anonymous",
+    decode.one_of(decode.map(decode.int, int.is_odd), [decode.bool]),
+  )
+  use user_id <- decode.field("user_id", decode.string)
+  use user_name <- decode.field("user_name", decode.string)
+  use created_at <- decode.field("created_at", decode.int)
+  use body <- decode.field("body", decode.string)
+  use attachments <- decode.field("attachments", decode.list(decode.string))
+
+  decode.success(ThreadMsg(
+    kind:,
+    role:,
+    anonymous:,
+    user_id:,
+    user_name:,
+    body:,
+    created_at:,
+    attachments:,
+  ))
+}
+
+type ThreadStatus {
+  ThreadOpen
+  ThreadClosed
+  ThreadSuspended
+}
+
+fn thread_status_decoder() -> decode.Decoder(ThreadStatus) {
+  use variant <- decode.then(decode.string)
+  case variant {
+    "open" -> decode.success(ThreadOpen)
+    "closed" -> decode.success(ThreadClosed)
+    "suspended" -> decode.success(ThreadSuspended)
+    _ -> decode.failure(ThreadOpen, "ThreadStatus")
+  }
 }
 
 type ModmailThread {
   ModmailThread(
     id: String,
-    open: Bool,
+    user_name: String,
+    user_id: String,
+    status: ThreadStatus,
     user_messages: Int,
     reply_messages: Int,
     internal_messages: Int,
-    participant_ids: List(String),
-    username: String,
+    staff_ids: List(String),
     messages: List(ThreadMsg),
   )
+}
+
+fn modmail_thread_decoder() -> decode.Decoder(ModmailThread) {
+  use id <- decode.field("id", decode.string)
+  use user_name <- decode.field("user_name", decode.string)
+  use user_id <- decode.field("user_id", decode.string)
+  use status <- decode.field("status", thread_status_decoder())
+  use user_messages <- decode.field("user_messages", decode.int)
+  use reply_messages <- decode.field("reply_messages", decode.int)
+  use internal_messages <- decode.field("internal_messages", decode.int)
+  use staff_ids <- decode.field("staff_ids", decode.list(decode.string))
+  use messages <- decode.optional_field(
+    "messages",
+    [],
+    decode.list(thread_msg_decoder()),
+  )
+
+  decode.success(ModmailThread(
+    id:,
+    user_name:,
+    user_id:,
+    status:,
+    user_messages:,
+    reply_messages:,
+    internal_messages:,
+    staff_ids:,
+    messages:,
+  ))
 }
 
 type UserRole {
@@ -108,26 +205,26 @@ fn user_role_decoder() -> decode.Decoder(UserRole) {
 }
 
 type User {
-  User(
-    logged_in: Bool,
-    id: String,
-    display_name: String,
-    avatar: String,
-    role: UserRole,
-  )
+  User(id: String, display_name: String, role: UserRole)
 }
 
 fn user_decoder() -> decode.Decoder(User) {
   use id <- decode.field("id", decode.string)
   use display_name <- decode.field("display_name", decode.string)
-  use avatar <- decode.field("avatar_url", decode.string)
   use role <- decode.field("role", user_role_decoder())
-  decode.success(User(logged_in: True, id:, display_name:, avatar:, role:))
+  decode.success(User(id:, display_name:, role:))
+}
+
+type Toast {
+  ToastError(String)
+  ToastSuccess(String)
+  ToastWarning(String)
 }
 
 type Model {
   Model(
     route: Route,
+    toasts: dict.Dict(Int, Toast),
     wave: String,
     loading: Bool,
     user: User,
@@ -155,28 +252,8 @@ fn init(_) -> #(Model, Effect(Message)) {
     |> fn(path) {
       case path {
         Ok([]) | Ok(["academy"]) | Ok(["academy", "threads"]) -> Threads
-        Ok(["academy", "threads", id]) ->
-          Thread(
-            ModmailThread(
-              id:,
-              open: True,
-              user_messages: 1,
-              reply_messages: 32,
-              internal_messages: 100,
-              participant_ids: [],
-              username: "pisswaddle",
-              messages: [
-                ThreadMsg(
-                  kind: IncomingMsg,
-                  role: UserRole,
-                  user_id: "0",
-                  user_name: "pisswaddle",
-                  content: "Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, ",
-                  time: "",
-                ),
-              ],
-            ),
-          )
+
+        Ok(["academy", "threads", id]) -> Thread(id, option.None)
 
         Ok(["academy", "cases"]) -> Cases
 
@@ -199,16 +276,11 @@ fn init(_) -> #(Model, Effect(Message)) {
   #(
     Model(
       route:,
+      toasts: dict.new(),
       loading: False,
       wave: "2026 — June",
       cases: [],
-      user: User(
-        logged_in: True,
-        id: "",
-        display_name: "Isaac",
-        avatar: "https://cdn.discordapp.com/guilds/94882524378968064/users/204084691425427466/avatars/98bdb0a9854cc0da563f51b6a300a98b.png?size=512",
-        role: UnknownUser,
-      ),
+      user: User(id: "", display_name: "Isaac", role: UnknownUser),
       issues: [
         "Bleh",
         "Bleh",
@@ -218,13 +290,14 @@ fn init(_) -> #(Model, Effect(Message)) {
       threads: [
         ModmailThread(
           id: "ed381ca7-5a8b-4546-9bdd-247ec0531ebc",
-          open: True,
           user_messages: 3,
           reply_messages: 10,
           internal_messages: 4000,
-          participant_ids: ["123", "123", "123"],
-          username: "au.ra",
+          staff_ids: ["123", "123", "123"],
+          user_name: "au.ra",
+          user_id: "1",
           messages: [],
+          status: ThreadOpen,
         ),
       ],
       trainees: [
@@ -259,9 +332,14 @@ fn init(_) -> #(Model, Effect(Message)) {
 type Message {
   OnRouteChange(Route)
 
+  ToastAdded(Toast)
+
+  ToastRemoved(Int)
+
   // Api returning
   ApiReturnedUser(Result(User, rsvp.Error(String)))
-
+  ApiReturnedThreads(Result(List(ModmailThread), rsvp.Error(String)))
+  ApiReturnedThread(Result(ModmailThread, rsvp.Error(String)))
   ApiReturnedQuestions(Result(List(String), rsvp.Error(String)))
 
   // User initiated actions
@@ -278,38 +356,7 @@ fn on_url_change(uri: uri.Uri) -> Message {
   case uri.path_segments(uri.path) {
     ["academy"] | ["academy", "threads"] -> OnRouteChange(Threads)
 
-    ["academy", "threads", id] ->
-      OnRouteChange(
-        Thread(
-          ModmailThread(
-            id:,
-            open: True,
-            user_messages: 1,
-            reply_messages: 32,
-            internal_messages: 100,
-            participant_ids: [],
-            username: "pisswaddle",
-            messages: [
-              ThreadMsg(
-                kind: IncomingMsg,
-                role: UserRole,
-                user_id: "0",
-                user_name: "pisswaddle",
-                content: "Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, ",
-                time: "",
-              ),
-              ThreadMsg(
-                kind: OutgoingMsg,
-                role: ModRole,
-                user_id: "0",
-                user_name: "dray",
-                content: "are you pilo, tamni?",
-                time: "",
-              ),
-            ],
-          ),
-        ),
-      )
+    ["academy", "threads", id] -> OnRouteChange(Thread(id, option.None))
 
     ["academy", "stats"] -> OnRouteChange(Stats)
 
@@ -332,23 +379,53 @@ fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
   case message {
     OnRouteChange(route) -> #(Model(..model, route:), route_effects(route))
 
+    // Toasts
+    ToastAdded(toast) -> {
+      let next_id = dict.size(model.toasts) + 1
+      #(
+        Model(..model, toasts: dict.insert(model.toasts, next_id, toast)),
+        remove_toast_after(next_id, 5000),
+      )
+    }
+
+    ToastRemoved(id) -> #(
+      Model(..model, toasts: dict.drop(model.toasts, [id])),
+      effect.none(),
+    )
+
+    // API returning messages
     ApiReturnedUser(Ok(user)) -> #(Model(..model, user: user), effect.none())
 
-    ApiReturnedUser(err) -> {
-      echo err
-      #(model, effect.none())
-    }
+    ApiReturnedUser(Error(err)) -> #(model, add_toast(rsvp_err_to_toast(err)))
 
     ApiReturnedQuestions(Ok(interview_questions)) -> #(
       Model(..model, interview_questions:),
       effect.none(),
     )
 
-    ApiReturnedQuestions(err) -> {
-      echo err
-      #(model, effect.none())
-    }
+    ApiReturnedQuestions(Error(err)) -> #(
+      model,
+      add_toast(rsvp_err_to_toast(err)),
+    )
 
+    ApiReturnedThreads(Ok(threads)) -> #(
+      Model(..model, threads:),
+      effect.none(),
+    )
+
+    ApiReturnedThreads(Error(err)) -> #(
+      model,
+      add_toast(rsvp_err_to_toast(err)),
+    )
+
+    ApiReturnedThread(Ok(thread)) -> #(
+      Model(..model, route: Thread(id: thread.id, content: option.Some(thread))),
+      effect.none(),
+    )
+
+    ApiReturnedThread(Error(err)) -> #(model, add_toast(rsvp_err_to_toast(err)))
+
+    // User filtering
     UserChangedThreadOpenFilter(state) -> #(
       Model(..model, threads_open: state),
       effect.none(),
@@ -377,167 +454,189 @@ fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
 }
 
 fn view(model: Model) -> Element(Message) {
-  html.div([class("grid lg:grid-cols-12 h-[100dvh]")], [
-    html.nav([class("lg:col-span-2 page-sidebar border-r border-gray-800")], [
-      html.details([class("relative")], [
-        html.summary([class("sidebar-logo")], [
-          icons.mortarboard([]),
-          html.div([], [
-            html.h3([], [html.text("Academy")]),
-            html.p([class("font-bold text-xs text-gray-400")], [
-              html.text(model.wave),
+  html.div(
+    [class("grid lg:grid-cols-12 h-[100dvh] relative overflow-y-hidden")],
+    [
+      html.nav(
+        [
+          class(
+            "lg:col-span-2 page-sidebar border-r border-gray-800 h-[100dvh]",
+          ),
+        ],
+        [
+          html.details([class("relative")], [
+            html.summary([class("sidebar-logo")], [
+              icons.mortarboard([]),
+              html.div([], [
+                html.h3([], [html.text("Academy")]),
+                html.p([class("font-bold text-xs text-gray-400")], [
+                  html.text(model.wave),
+                ]),
+              ]),
+              icons.chevron_down([class("size-4 ml-auto")]),
             ]),
-          ]),
-          icons.chevron_down([class("size-4 ml-auto")]),
-        ]),
-        html.ul(
-          [
-            class(
-              "absolute top-full left-3 right-3 bg-gray-900 border border-gray-800 rounded-lg p-1 z-50",
-            ),
-          ],
-          [
-            html.li([], [html.button([], [html.text("2026 — June")])]),
-            html.li([], [html.button([], [html.text("2025 — December")])]),
-            html.li([], [html.button([], [html.text("2023 — Jure")])]),
-            html.li([], [html.button([], [html.text("2021 — Septober")])]),
-          ],
-        ),
-      ]),
-      html.ul([], [
-        sidebar_link(model, Threads),
-        sidebar_link(model, Cases),
-        sidebar_link(model, Stats),
-        sidebar_link(model, Issues),
-        sidebar_link(model, InterviewQuestions),
-      ]),
-    ]),
-
-    case model.route {
-      Threads | Thread(_) -> threads_sidebar(model)
-      Cases | Case(_) -> cases_sidebar(model)
-      _ -> element.none()
-    },
-
-    html.main(
-      [
-        class(case model.route {
-          Threads | Thread(_) | Cases | Case(_) -> "lg:col-span-7"
-          _ -> "lg:col-span-10"
-        }),
-      ],
-      [
-        html.header(
-          [
-            class(
-              "px-6 h-20 flex items-center justify-between flex-wrap border-b border-gray-900",
-            ),
-          ],
-          [
-            html.h1([class("font-bold text-xl text-white")], [
-              html.text(case model.route {
-                Threads -> "Threads"
-                Thread(ModmailThread(username:, ..)) ->
-                  "Thread with " <> username
-                Cases -> "Cases"
-                Case(id:) -> "Case #" <> int.to_string(id)
-                Stats -> "Statistics"
-                Issues -> "Issues"
-                InterviewQuestions -> "Interview Questions"
-                NotFound(_path) -> "Page Not Found"
-              }),
-            ]),
-            html.nav([], [
-              html.details([class("relative")], [
-                html.summary(
-                  [
-                    class(
-                      "flex items-center gap-3 font-semibold cursor-pointer rounded-md py-2 px-3 border border-transparent transition-colors hover:border-gray-800 hover:bg-gray-1000",
-                    ),
-                  ],
-                  [
-                    html.img([
-                      attribute.src(model.user.avatar),
-                      class("size-7 rounded-full"),
-                    ]),
-                    html.text(model.user.display_name),
-                    icons.chevron_down([class("size-4")]),
-                  ],
+            html.ul(
+              [
+                class(
+                  "absolute top-full left-3 right-3 bg-gray-900 border border-gray-800 rounded-lg p-1 z-50",
                 ),
-                html.ul([class("absolute top-full right-0 bg-black")], [
-                  html.li([], [
-                    html.a([attribute.href("/academy/logout")], [
-                      html.text("Logout"),
+              ],
+              [
+                html.li([], [html.button([], [html.text("2026 — June")])]),
+                html.li([], [html.button([], [html.text("2025 — December")])]),
+                html.li([], [html.button([], [html.text("2023 — Jure")])]),
+                html.li([], [html.button([], [html.text("2021 — Septober")])]),
+              ],
+            ),
+          ]),
+          html.ul([], [
+            sidebar_link(model, Threads),
+            sidebar_link(model, Cases),
+            sidebar_link(model, Stats),
+            sidebar_link(model, Issues),
+            sidebar_link(model, InterviewQuestions),
+          ]),
+        ],
+      ),
+
+      case model.route {
+        Threads | Thread(..) -> threads_sidebar(model)
+        Cases | Case(_) -> cases_sidebar(model)
+        _ -> element.none()
+      },
+
+      html.main(
+        [
+          class(case model.route {
+            Threads | Thread(..) | Cases | Case(_) ->
+              "lg:col-span-7 h-[100dvh] flex flex-col"
+            _ -> "lg:col-span-10 h-[100dvh] flex flex-col"
+          }),
+        ],
+        [
+          html.header(
+            [
+              class(
+                "px-6 h-20 flex items-center justify-between flex-wrap border-b border-gray-900",
+              ),
+            ],
+            [
+              html.h1([class("font-bold text-xl text-white")], [
+                html.text(case model.route {
+                  Threads -> "Threads"
+                  Thread(
+                    content: option.Some(ModmailThread(user_name:, ..)),
+                    ..,
+                  ) -> "Thread with " <> user_name
+                  Thread(..) -> "Loading thread..."
+                  Cases -> "Cases"
+                  Case(id:) -> "Case #" <> int.to_string(id)
+                  Stats -> "Statistics"
+                  Issues -> "Issues"
+                  InterviewQuestions -> "Interview Questions"
+                  NotFound(_path) -> "Page Not Found"
+                }),
+              ]),
+              html.nav([], [
+                html.details([class("relative")], [
+                  html.summary(
+                    [
+                      class(
+                        "flex items-center gap-3 font-semibold cursor-pointer rounded-md py-2 px-3 border border-transparent transition-colors hover:border-gray-800 hover:bg-gray-1000",
+                      ),
+                    ],
+                    [
+                      html.img([
+                        attribute.src(avatar(model.user.id)),
+                        class("size-7 rounded-full"),
+                      ]),
+                      html.text(model.user.display_name),
+                      icons.chevron_down([class("size-4")]),
+                    ],
+                  ),
+                  html.ul([class("absolute top-full right-0 bg-black")], [
+                    html.li([], [
+                      html.a([attribute.href("/academy/logout")], [
+                        html.text("Logout"),
+                      ]),
                     ]),
                   ]),
                 ]),
               ]),
-            ]),
-          ],
-        ),
+            ],
+          ),
 
-        case model.route {
-          Thread(ModmailThread(messages:, ..)) ->
-            html.ul(
-              [class("p-6 grid gap-4")],
-              list.map(messages, fn(message) {
-                html.li([], [
-                  html.h4(
-                    [
-                      class(
-                        "font-bold "
-                        <> case message.role {
-                          ModRole | TraineeRole -> "text-ow-mod"
-                          HelperRole -> "text-ow-helper"
-                          AdminRole -> "text-ow-admin"
-                          SystemRole -> ""
-                          UserRole -> "text-white"
-                        },
+          case model.route {
+            Thread(id:, content: option.None) ->
+              html.div([class("p-6")], [
+                html.div(
+                  [
+                    attribute.role("alert"),
+                    class(
+                      "bg-info-bg border border-info-fg text-white p-3 rounded-md",
+                    ),
+                  ],
+                  [
+                    html.p([], [
+                      html.text(
+                        "Loading ModMail thread #" <> id <> " content...",
                       ),
-                    ],
-                    [
-                      html.text(message.user_name),
-                    ],
-                  ),
-                  html.p([], [
-                    html.text(message.content),
-                  ]),
-                ])
-              }),
+                    ]),
+                  ],
+                ),
+              ])
+
+            Thread(content: option.Some(ModmailThread(messages:, ..)), ..) ->
+              thread_view(model, messages)
+
+            Threads ->
+              html.div([class("p-10 text-center text-gray-300 text-xl")], [
+                html.text("Please select a thread"),
+              ])
+
+            Issues -> issues_view(model)
+
+            Cases -> html.div([], [])
+
+            Case(_) -> html.div([], [])
+
+            Stats -> stats_view(model)
+
+            InterviewQuestions ->
+              questions_view(model.user, model.interview_questions)
+
+            NotFound(_) -> html.div([], [])
+          },
+        ],
+      ),
+      keyed.ul(
+        [class("fixed top-4 right-4")],
+        list.map(dict.to_list(model.toasts), fn(combined) {
+          case combined {
+            #(key, ToastError(msg)) -> #(
+              "toast#" <> int.to_string(key),
+              html.li([], [html.text(msg)]),
             )
-
-          Threads ->
-            html.div([class("p-10 text-center text-gray-300 text-xl")], [
-              html.text("Please select a thread"),
-            ])
-
-          Issues -> issues_view(model)
-
-          Cases -> html.div([], [])
-
-          Case(_) -> html.div([], [])
-
-          Stats -> stats_view(model)
-
-          InterviewQuestions ->
-            questions_view(model.user, model.interview_questions)
-
-          NotFound(_) -> html.div([], [])
-        },
-      ],
-    ),
-  ])
+            #(key, ToastSuccess(msg)) -> #(
+              "toast#" <> int.to_string(key),
+              html.li([], [html.text(msg)]),
+            )
+            #(key, ToastWarning(msg)) -> #(
+              "toast#" <> int.to_string(key),
+              html.li([], [html.text(msg)]),
+            )
+          }
+        }),
+      ),
+    ],
+  )
 }
 
 fn sidebar_link(model: Model, route: Route) {
   let #(icon, href, text) = case route {
     Threads -> #(icons.envelope([]), "/academy/threads", "Threads")
 
-    Thread(ModmailThread(id:, ..)) -> #(
-      icons.inbox([]),
-      "/academy/thread/" <> id,
-      "Thread",
-    )
+    Thread(id:, ..) -> #(icons.inbox([]), "/academy/thread/" <> id, "Thread")
 
     Cases -> #(icons.cases([]), "/academy/cases", "Cases")
 
@@ -561,7 +660,7 @@ fn sidebar_link(model: Model, route: Route) {
   }
 
   let active = case model.route, route {
-    Threads, Threads | Thread(_), Threads -> True
+    Threads, Threads | Thread(..), Threads -> True
     r1, r2 if r1 == r2 -> True
     _, _ -> False
   }
@@ -669,14 +768,16 @@ fn threads_sidebar(model: Model) {
                     class(
                       "block p-5 rounded-md bg-gray-950 border border-gray-800 border-l-4",
                     ),
-                    attribute.classes([#("border-l-red-500", !thread.open)]),
+                    attribute.classes([
+                      #("border-l-red-500", thread.status == ThreadClosed),
+                    ]),
                   ],
                   [
                     html.h4(
                       [class("font-bold mb-2 flex items-center gap-1.5")],
                       [
                         icons.hashtag([class("size-5 text-gray-400")]),
-                        html.text(thread.username),
+                        html.text(thread.user_name),
                       ],
                     ),
                     html.dl(
@@ -721,32 +822,17 @@ fn threads_sidebar(model: Model) {
                           ],
                         ),
                         html.dt([class("ml-auto")], [
-                          html.div([class("flex")], [
-                            html.figure(
-                              [
+                          html.div(
+                            [class("flex")],
+                            list.map(thread.staff_ids, fn(snowflake) {
+                              html.img([
+                                attribute.src(avatar(snowflake)),
                                 class(
-                                  "size-6 rounded-full bg-blue-400 border border-gray-800 -mr-2",
+                                  "size-7 rounded-full bg-blue-400 border border-gray-800 not-last:-mr-2",
                                 ),
-                              ],
-                              [],
-                            ),
-                            html.figure(
-                              [
-                                class(
-                                  "size-6 rounded-full bg-green-400 border border-gray-800 -mr-2",
-                                ),
-                              ],
-                              [],
-                            ),
-                            html.figure(
-                              [
-                                class(
-                                  "size-6 rounded-full bg-orange-400 border border-gray-800",
-                                ),
-                              ],
-                              [],
-                            ),
-                          ]),
+                              ])
+                            }),
+                          ),
                         ]),
                       ],
                     ),
@@ -887,7 +973,7 @@ fn filtered_threads(model: Model) -> List(ModmailThread) {
       "" -> True
       _ ->
         string.contains(
-          string.lowercase(thread.username),
+          string.lowercase(thread.user_name),
           string.lowercase(model.thread_filter),
         )
     }
@@ -1110,6 +1196,100 @@ fn stats_view(model: Model) {
   ])
 }
 
+fn thread_view(model: Model, messages: List(ThreadMsg)) {
+  html.div([class("py-6 block h-full overflow-y-auto")], [
+    keyed.ul(
+      [class("grid")],
+      list.index_map(messages, fn(message, i) {
+        #(
+          "msg#" <> message.user_id <> int.to_string(i),
+          html.li(
+            [
+              class(
+                "flex gap-3 px-8 py-3 transition-colors hover:bg-gray-900 "
+                <> case message.kind {
+                  InternalMsg -> "bg-gray-900/50"
+                  _ -> ""
+                },
+              ),
+            ],
+            [
+              html.figure([], [
+                html.img([
+                  class("size-11 rounded-full bg-black"),
+                  attribute.alt(message.user_name <> "'s Avatar"),
+                  attribute.src(case message.kind {
+                    IncomingMsg -> avatar("system")
+                    _ -> avatar(message.user_id)
+                  }),
+                ]),
+              ]),
+              html.section([class("flex-1")], [
+                html.h4(
+                  [
+                    class(
+                      "flex items-center gap-2 font-semibold "
+                      <> case message.role {
+                        ModRole | TraineeRole -> "text-ow-mod"
+                        HelperRole -> "text-ow-helper"
+                        AdminRole -> "text-ow-admin"
+                        SystemRole -> ""
+                        UserRole -> "text-white"
+                      },
+                    ),
+                  ],
+                  [
+                    html.text(message.user_name),
+                    html.span(
+                      [
+                        class(
+                          "text-xs text-gray-200 bg-gray-800 leading-none pt-0.5 pb-1 rounded px-1.5 uppercase",
+                        ),
+                      ],
+                      [
+                        html.text(case message.kind {
+                          InternalMsg -> "Internal"
+                          IncomingMsg -> "From User"
+                          OutgoingMsg -> "To User"
+                          SystemMsg -> "System"
+                        }),
+                      ],
+                    ),
+                  ],
+                ),
+                element.unsafe_raw_html(
+                  "",
+                  "article",
+                  [class("message-content")],
+                  message.body,
+                ),
+                case message.attachments {
+                  [] -> element.none()
+                  _ ->
+                    html.footer(
+                      [class("mt-1")],
+                      list.map(message.attachments, fn(attachment) {
+                        case string.reverse(attachment) {
+                          "gnp." <> _ ->
+                            html.img([
+                              attribute.src(attachment),
+                              attribute.alt("Modmail Embedded Image"),
+                              class("max-h-96 max-w-96 rounded-md"),
+                            ])
+                          _ -> element.none()
+                        }
+                      }),
+                    )
+                },
+              ]),
+            ],
+          ),
+        )
+      }),
+    ),
+  ])
+}
+
 fn issues_view(model: Model) {
   html.div([class("p-6 bg-gray-900")], [
     html.header([class("flex items-center justify-between gap-4 mb-8")], [
@@ -1189,24 +1369,40 @@ fn issues_view(model: Model) {
   ])
 }
 
+//
 // Data functions
+//
 
-fn get_user() {
+fn get_user() -> Effect(Message) {
   let handler = rsvp.expect_json(user_decoder(), ApiReturnedUser)
   rsvp.get(base_url <> "/academy/api/auth/me", handler)
 }
 
-fn get_questions() {
+fn get_questions() -> Effect(Message) {
   let handler =
     rsvp.expect_json(decode.list(decode.string), ApiReturnedQuestions)
   rsvp.get(base_url <> "/academy/api/questions", handler)
 }
 
-// Other effects
-fn set_title(route: Route) {
+fn get_threads() -> Effect(Message) {
+  let handler =
+    rsvp.expect_json(decode.list(modmail_thread_decoder()), ApiReturnedThreads)
+  rsvp.get(base_url <> "/academy/api/threads", handler)
+}
+
+fn get_thread(id: String) -> Effect(Message) {
+  let handler = rsvp.expect_json(modmail_thread_decoder(), ApiReturnedThread)
+  rsvp.get(base_url <> "/academy/api/threads/" <> id, handler)
+}
+
+//
+// Custom effects
+//
+
+fn set_title(route: Route) -> Effect(Message) {
   let page_title = case route {
     Threads -> "Threads"
-    Thread(ModmailThread(id:, ..)) -> "Thread #" <> id
+    Thread(id:, ..) -> "Thread #" <> id
     Cases -> "Cases"
     Case(id:) -> "Case #" <> int.to_string(id)
     Stats -> "Statistics"
@@ -1216,15 +1412,25 @@ fn set_title(route: Route) {
   }
 
   use _ <- effect.from
-  meta.set_page_title(page_title <> " ・ Academy")
+  browser.set_page_title(page_title <> " ・ Academy")
+}
+
+fn add_toast(toast: Toast) -> Effect(Message) {
+  use dispatch <- effect.from
+  dispatch(ToastAdded(toast))
+}
+
+fn remove_toast_after(id: Int, delay: Int) -> Effect(Message) {
+  use dispatch <- effect.from
+  browser.set_timeout(delay, fn() { dispatch(ToastRemoved(id)) })
 }
 
 // Utils
 
-fn route_effects(route: Route) -> effect.Effect(Message) {
+fn route_effects(route: Route) -> Effect(Message) {
   let data_effects = case route {
-    Threads -> []
-    Thread(ModmailThread(_, ..)) -> []
+    Threads -> [get_threads()]
+    Thread(id:, content: option.None) -> [get_threads(), get_thread(id)]
     Cases -> []
     Case(_) -> []
     Stats -> []
@@ -1232,8 +1438,27 @@ fn route_effects(route: Route) -> effect.Effect(Message) {
     InterviewQuestions -> [
       get_questions(),
     ]
-    NotFound(..) -> []
+
+    _ -> []
   }
 
   effect.batch([set_title(route), ..data_effects])
+}
+
+fn rsvp_err_to_toast(err: rsvp.Error(String)) {
+  echo err
+
+  case err {
+    rsvp.BadBody -> ToastError("The response body could not be decoded")
+    rsvp.BadUrl(_) -> ToastError("The provided URL was badly formed")
+    rsvp.HttpError(_) -> ToastError("We couldn't make that HTTP request")
+    rsvp.JsonError(_) -> ToastError("Could not decode JSON from response")
+    rsvp.NetworkError -> ToastError("A network error has occurred")
+    rsvp.UnhandledResponse(_) ->
+      ToastError("A response wasn't handled properly")
+  }
+}
+
+fn avatar(snowflake: String) {
+  base_url <> "/academy/api/avatar/" <> snowflake <> ".png"
 }

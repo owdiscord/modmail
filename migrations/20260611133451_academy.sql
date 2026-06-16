@@ -17,8 +17,7 @@ CREATE TABLE IF NOT EXISTS academy_staff (
   display_name VARCHAR(512) NOT NULL,
   wave_id INT NOT NULL REFERENCES academy_waves(id),
   -- One of 'trainee', 'moderator', 'helper', or 'admin'
-  role VARCHAR(64) NOT NULL DEFAULT 'trainee',
-  avatar VARCHAR(512) NOT NULL DEFAULT ''
+  role VARCHAR(64) NOT NULL DEFAULT 'trainee'
 );
 
 CREATE TABLE IF NOT EXISTS academy_issues (
@@ -40,8 +39,22 @@ CREATE TABLE IF NOT EXISTS academy_interview_questions (
   text VARCHAR(512) NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS academy_sessions (
+  id VARCHAR(128) NOT NULL,
+  discord_id VARCHAR(22) REFERENCES academy_staff(snowflake),
+  wave_id INT REFERENCES academy_waves(id),
+  expires_at TIMESTAMP NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (id),
+  KEY idx_expires_at (expires_at),
+  KEY idx_discord_id (discord_id)
+);
+
 -- migrate:down
 DROP TABLE IF EXISTS academy_issues;
 DROP TABLE IF EXISTS academy_staff;
 DROP TABLE IF EXISTS academy_interview_questions;
 DROP TABLE IF EXISTS academy_waves;
+DROP TABLE IF EXISTS academy_sessions;

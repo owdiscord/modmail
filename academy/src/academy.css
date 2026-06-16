@@ -9,6 +9,7 @@
   --color-gray-800: #3e3f45;
   --color-gray-750: #494950;
   --color-gray-400: #84858b;
+  --color-gray-100: #dfdfe1;
   --color-ow-orange: #f06414;
   --color-closed: #ed4447;
 
@@ -94,5 +95,29 @@ body {
     & svg {
       color: var(--color-ow-orange);
     }
+  }
+}
+
+.message-content {
+  color: var(--color-gray-100);
+  line-height: 1.4;
+
+  & h1 {
+    font-size: var(--text-2xl);
+    color: var(--color-white);
+    font-weight: var(--font-weight-semibold);
+    margin-bottom: .6rem;
+  }
+
+  & h2 {
+    font-size: var(--text-xl);
+    color: var(--color-white);
+    font-weight: var(--font-weight-semibold);
+    margin-bottom: .4rem;
+  }
+
+  & h6 {
+    color: var(--color-gray-400);
+    font-size: .9rem;
   }
 }

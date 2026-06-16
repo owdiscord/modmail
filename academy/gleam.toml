@@ -11,6 +11,9 @@ rsvp = ">= 2.0.0 and < 3.0.0"
 [dev_dependencies]
 gleeunit = ">= 1.0.0 and < 2.0.0"
 
+[tools.lustre.dev]
+proxy = { from = "/academy/api", to = "http://localhost:8800/academy/api" }
+
 [tools.lustre.html]
 stylesheets = [{ href = "https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap" }]
 links = [{ href = "/icon.svg", type = "image/svg+xml", rel = "icon" }]

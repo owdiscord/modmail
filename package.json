@@ -16,9 +16,9 @@
 		"watch": "NODE_ENV=development tsx --watch src/index.ts",
 		"lint": "biome check ./src",
 		"lint:fix": "biome check --write --unsafe ./src",
-		"migrate:up": "node ./src/migrate.ts up",
-		"migrate:new": "node ./src/migrate.ts new",
-		"migrate:down": "node ./src/migrate.ts down"
+		"migrate:up": "tsx ./src/migrate.ts up",
+		"migrate:new": "tsx ./src/migrate.ts new",
+		"migrate:down": "tsx ./src/migrate.ts down"
 	},
 	"repository": {
 		"type": "git",

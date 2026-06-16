@@ -24,6 +24,7 @@ import config from "./config";
 import type { Thread } from "./data/Thread";
 import logger from "./logger";
 import { postSystemMessage } from "./thread";
+import type { DbQuery } from "./db";
 
 const userMentionRegex = /^<@!?([0-9]+?)>$/;
 
