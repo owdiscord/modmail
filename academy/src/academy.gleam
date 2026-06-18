@@ -456,7 +456,7 @@ fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
       let #(calendar.Date(year:, month:, ..), _) =
         timestamp.to_calendar(wave.begin_at, calendar.local_offset())
       let wave_name =
-        calendar.month_to_string(month) <> " - " <> int.to_string(year)
+        calendar.month_to_string(month) <> " " <> int.to_string(year)
 
       #(
         Model(..model, trainees: wave.trainees, wave_id: wave.id, wave_name:),
@@ -742,11 +742,11 @@ fn view(model: Model) -> Element(Message) {
                       html.button(
                         [
                           event.on_click(UserClosedModal),
-                          class("cursor-pointer"),
+                          class(
+                            "cursor-pointer p-2 cursor-pointer rounded-md hover:bg-gray-800",
+                          ),
                         ],
-                        [
-                          html.text("X"),
-                        ],
+                        [icons.x([class("size-4")])],
                       ),
                     ],
                   ),
@@ -886,7 +886,7 @@ fn threads_sidebar(model: Model) {
         [
           event.on_click(UserChangedThreadOpenFilter(!model.threads_open)),
           class(
-            "bg-gray-800 rounded-sm py-1 px-3 font-semibold flex items-center gap-2 transition-all cursor-pointer hover:opacity-80 "
+            "rounded-sm py-1 px-3 font-semibold flex items-center gap-2 transition-all cursor-pointer hover:opacity-80 "
             <> case model.threads_open {
               True -> "bg-gray-800 text-gray-200"
               False -> "bg-gray-950 text-gray-400"
@@ -955,16 +955,22 @@ fn threads_sidebar(model: Model) {
                 html.a(
                   [
                     attribute.href("/academy/threads/" <> thread.id),
-                    class(
-                      "block p-5 rounded-md bg-gray-950 border border-gray-800 border-l-4",
-                    ),
+                    class("block p-5 rounded-md border border-l-4"),
                     attribute.classes([
-                      #("border-l-red-500", thread.status == ThreadClosed),
+                      #(
+                        "bg-gray-800 border-gray-750 text-gray-200",
+                        thread.status == ThreadOpen,
+                      ),
+                      #(
+                        "bg-gray-950 border-gray-800 text-gray-300",
+                        thread.status == ThreadClosed,
+                      ),
+                      // #("border-l-blurple-500", True),
                     ]),
                   ],
                   [
                     html.h4(
-                      [class("font-bold mb-2 flex items-center gap-1.5")],
+                      [class("font-semibold mb-2 flex items-center gap-1.5")],
                       [
                         icons.hashtag([class("size-5 text-gray-400")]),
                         html.text(thread.user_name),
@@ -973,7 +979,7 @@ fn threads_sidebar(model: Model) {
                     html.dl(
                       [
                         class(
-                          "text-gray-300 text-sm flex items-end flex-wrap gap-4 font-semibold",
+                          "text-gray-200 text-sm flex items-end flex-wrap gap-4 font-semibold",
                         ),
                       ],
                       [
@@ -1001,7 +1007,7 @@ fn threads_sidebar(model: Model) {
                         ),
                         html.dd(
                           [
-                            class("flex items-center gap-1.5"),
+                            class("flex items-center gap-1.5 opacity-90"),
                             attribute.data("tooltip", "Internal Chat"),
                           ],
                           [
@@ -1430,7 +1436,10 @@ fn thread_view(model: Model, thread: ModmailThread) {
                     ),
                   ],
                   [
-                    html.text(message.user_name),
+                    html.text(case message.user_name {
+                      "" -> "ModMail"
+                      name -> name
+                    }),
                     html.span(
                       [
                         class(

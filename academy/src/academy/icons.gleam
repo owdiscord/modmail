@@ -383,7 +383,7 @@ pub fn user_wave(attrs: List(attribute.Attribute(a))) -> Element(a) {
   )
 }
 
-pub fn info_circle(attrs) {
+pub fn info_circle(attrs: List(attribute.Attribute(a))) -> Element(a) {
   svg.svg(
     [
       attribute("fill", "currentColor"),
@@ -406,6 +406,25 @@ pub fn info_circle(attrs) {
           "M23 12a11 11 0 1 1-22 0 11 11 0 0 1 22 0Zm-9.5-4.75a1.25 1.25 0 1 1-2.5 0 1.25 1.25 0 0 1 2.5 0Zm-.77 3.96a1 1 0 1 0-1.96-.42l-1.04 4.86a2.77 2.77 0 0 0 4.31 2.83l.24-.17a1 1 0 1 0-1.16-1.62l-.24.17a.77.77 0 0 1-1.2-.79l1.05-4.86Z",
         ),
         attribute("fill-rule", "evenodd"),
+      ]),
+    ],
+  )
+}
+
+pub fn x(attrs: List(attribute.Attribute(a))) -> Element(a) {
+  svg.svg(
+    [
+      attribute("fill", "currentColor"),
+      attribute("viewBox", "0 0 24 24"),
+      attribute("xmlns", "http://www.w3.org/2000/svg"),
+      ..attrs
+    ],
+    [
+      svg.path([
+        attribute(
+          "d",
+          "M19.3 20.7a1 1 0 0 0 1.4-1.4L13.42 12l7.3-7.3a1 1 0 0 0-1.42-1.4L12 10.58l-7.3-7.3a1 1 0 0 0-1.4 1.42L10.58 12l-7.3 7.3a1 1 0 1 0 1.42 1.4L12 13.42l7.3 7.3Z",
+        ),
       ]),
     ],
   )
