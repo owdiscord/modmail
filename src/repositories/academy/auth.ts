@@ -1,6 +1,7 @@
 import type { DbQuery } from "../../db";
 import { v7 } from "uuid";
 import logger from "../../logger";
+import { randomBytes } from "node:crypto";
 
 export interface Session {
   user_id: number;
@@ -64,25 +65,25 @@ export async function createSession(
   sql: DbQuery,
   user_id: number,
   wave_id: number,
-): Promise<{ id: string; expires: Date } | null> {
+): Promise<{ token: string; expires: Date } | null> {
   try {
-    // Use UUIDv7 as our session key
-    const id = v7();
+    // Use pseudo-random bytes as our session key
+    const token = randomBytes(64).toString("hex");
     const expires = new Date(Date.now() + sessionExpiry);
 
     await sql`INSERT INTO academy_sessions (
-    id,
+    token,
     user_id,
     wave_id,
     expires_at
   ) VALUES (
-    ${id},
+    ${token},
     ${user_id},
     ${wave_id},
     ${expires}
   )`;
 
-    return { id, expires };
+    return { token, expires };
   } catch (err) {
     logger.error({ err }, "could not create session");
     return null;
@@ -95,7 +96,7 @@ export async function getSessionByID(
   session_id: string,
 ): Promise<Session | null> {
   const res =
-    await sql`SELECT s.id, s.user_id, s.wave_id, s.expires_at, u.role FROM academy_sessions s INNER JOIN academy_staff u ON u.id = s.user_id WHERE s.id = ${session_id} AND expires_at > NOW()`;
+    await sql`SELECT s.user_id, s.wave_id, s.expires_at, u.role FROM academy_sessions s INNER JOIN academy_staff u ON u.id = s.user_id WHERE s.id = ${session_id} AND expires_at > NOW()`;
 
   return res[0] ? (res[0] as Session) : null;
 }
@@ -108,7 +109,7 @@ export async function getSessionByDiscordID(
   wave_id: number,
 ): Promise<Session | null> {
   const res =
-    await sql`SELECT s.id, s.discord_id, s.wave_id, s.expires_at, u.role FROM academy_sessions s INNER JOIN academy_staff u ON u.id = s.user_id WHERE s.user_id = ${discord_id} AND s.wave_id = ${wave_id}`;
+    await sql`SELECT s.discord_id, s.wave_id, s.expires_at, u.role FROM academy_sessions s INNER JOIN academy_staff u ON u.id = s.user_id WHERE s.user_id = ${discord_id} AND s.wave_id = ${wave_id}`;
 
   return res[0] ? (res[0] as Session) : null;
 }

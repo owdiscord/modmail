@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS academy_interview_questions (
 );
 
 CREATE TABLE IF NOT EXISTS academy_sessions (
-  id VARCHAR(128) NOT NULL,
+  id INT AUTO_INCREMENT,
+  token VARCHAR(64) NOT NULL UNIQUE,
   user_id INT REFERENCES academy_staff(id),
   wave_id INT REFERENCES academy_waves(id),
   expires_at TIMESTAMP NOT NULL,
