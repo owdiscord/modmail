@@ -1,5 +1,4 @@
 import type { DbQuery } from "../../db";
-import { v7 } from "uuid";
 import logger from "../../logger";
 import { randomBytes } from "node:crypto";
 
@@ -68,7 +67,7 @@ export async function createSession(
 ): Promise<{ token: string; expires: Date } | null> {
   try {
     // Use pseudo-random bytes as our session key
-    const token = randomBytes(64).toString("hex");
+    const token = randomBytes(32).toString("hex");
     const expires = new Date(Date.now() + sessionExpiry);
 
     await sql`INSERT INTO academy_sessions (
@@ -101,6 +100,17 @@ export async function getSessionByID(
   return res[0] ? (res[0] as Session) : null;
 }
 
+// Get a session by it's ID
+export async function getSessionByToken(
+  sql: DbQuery,
+  token: string,
+): Promise<Session | null> {
+  const res =
+    await sql`SELECT s.user_id, s.wave_id, s.expires_at, u.role FROM academy_sessions s INNER JOIN academy_staff u ON u.id = s.user_id WHERE s.token = ${token} AND expires_at > NOW()`;
+
+  return res[0] ? (res[0] as Session) : null;
+}
+
 // Get a session by a given Discord ID (snowflake). This also requires the wave ID, because
 // otherwise there can be many returned, in theory.
 export async function getSessionByDiscordID(
@@ -117,6 +127,11 @@ export async function getSessionByDiscordID(
 // Clear a session from the database by it's ID
 export async function deleteSessionByID(sql: DbQuery, id: string) {
   return await sql`DELETE FROM academy_sessions WHERE id = ${id}`;
+}
+
+// Clear a session from the database by it's ID
+export async function deleteSessionByToken(sql: DbQuery, token: string) {
+  return await sql`DELETE FROM academy_sessions WHERE token = ${token}`;
 }
 
 // Ensure a given discord ID (snowflake) has permission to access at least one

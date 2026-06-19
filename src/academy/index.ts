@@ -19,6 +19,7 @@ import {
   latestUserForDiscordID,
   type Session,
   getUserDetails,
+  getSessionByToken,
 } from "../repositories/academy/auth";
 import logger from "../logger";
 import { createMiddleware } from "hono/factory";
@@ -31,36 +32,40 @@ const sql = useDb();
 const sessionCookie = "academy_session";
 
 const authMiddleware = createMiddleware(async (c, next) => {
-  const sessionID = getCookie(c, sessionCookie);
+  const sessionToken = getCookie(c, sessionCookie);
 
-  if (!sessionID)
-    // TODO: See if we can just push to /auth/redirect here instead
-    return c.json({
-      error:
-        "You are not authenticated and cannot view this page. You may need to redirect.",
-      url: "/academy/api/auth/redirect",
-    });
+  if (!sessionToken) {
+    logger.debug("no session ID provided");
+    return c.json(
+      {
+        error: "no authentication provided",
+      },
+      401,
+    );
+  }
 
-  c.set("session_id", sessionID);
+  c.set("session_id", sessionToken);
 
-  const cached = getCachedSession(sessionID);
+  const cached = getCachedSession(sessionToken);
   if (cached) {
     c.set("session", cached);
     return await next();
   }
 
-  const inDB = await getSessionByID(sql, sessionID);
+  const inDB = await getSessionByToken(sql, sessionToken);
   if (inDB) {
-    setCachedSession(sessionID, inDB);
+    setCachedSession(sessionToken, inDB);
     c.set("session", inDB);
     return await next();
   }
 
-  return c.json({
-    error:
-      "You are not authenticated and cannot view this page. You may need to redirect.",
-    url: "/academy/api/auth/redirect",
-  });
+  logger.debug({ cached, inDB }, "nothing in db or cache");
+  return c.json(
+    {
+      error: "no authentication provided",
+    },
+    401,
+  );
 });
 
 app.use(
@@ -168,7 +173,7 @@ app.get("/api/auth/callback", async (c) => {
   }
 
   // Cache the session
-  setCachedSession(session.id, {
+  setCachedSession(session.token, {
     user_id: user.id,
     wave_id: user.wave_id,
     role: user.role,
@@ -176,7 +181,7 @@ app.get("/api/auth/callback", async (c) => {
   });
 
   // Set the session ID cookie
-  setCookie(c, sessionCookie, session.id, {
+  setCookie(c, sessionCookie, session.token, {
     httpOnly: true,
     secure: !process.env.DEV_SERVER,
     sameSite: "Lax",
