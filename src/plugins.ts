@@ -2,7 +2,6 @@ import type { Client } from "discord.js";
 import type { Commands } from "./commands";
 import type { ModmailConfig } from "./config";
 import { downloadAttachment, saveAttachment } from "./data/attachments";
-import * as displayRoles from "./data/displayRoles";
 import { getLogUrl } from "./data/logs";
 import type { DbQuery } from "./db";
 import { afterNewMessageReceived } from "./hooks/afterNewMessageReceived";
@@ -28,6 +27,7 @@ import snippets from "./plugins/snippets";
 import staffRegistration from "./plugins/staffRegistration";
 import suspend from "./plugins/suspend";
 import typingProxy from "./plugins/typingProxy";
+import * as displayRoles from "./repositories/displayRoles";
 
 export type ModuleProps = {
   bot: Client;

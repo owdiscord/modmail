@@ -1,4 +1,6 @@
 import type { Message } from "discord.js";
+import type { Thread } from "../data/Thread";
+import type { ModuleProps } from "../plugins";
 import {
   getModeratorDefaultDisplayRoleName,
   getModeratorThreadDisplayRoleName,
@@ -6,9 +8,7 @@ import {
   resetModeratorThreadRoleOverride,
   setModeratorDefaultRoleOverride,
   setModeratorThreadRoleOverride,
-} from "../data/displayRoles";
-import type { Thread } from "../data/Thread";
-import type { ModuleProps } from "../plugins";
+} from "../repositories/displayRoles";
 import { postSystemMessage } from "../thread";
 import { getInboxGuild, isSnowflake } from "../utils";
 

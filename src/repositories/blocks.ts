@@ -1,9 +1,8 @@
 import type { RowDataPacket } from "mysql2";
-import { useDb } from "../db";
-
-const db = useDb();
+import type { DbQuery } from "../db";
 
 export async function getBlockStatus(
+  db: DbQuery,
   user_id: string,
 ): Promise<{ isBlocked: boolean; expiresAt: string }> {
   const rows =
@@ -21,17 +20,18 @@ export async function getBlockStatus(
   };
 }
 
-export async function isBlocked(userId: string): Promise<boolean> {
-  return (await getBlockStatus(userId)).isBlocked;
+export async function isBlocked(db: DbQuery, userId: string): Promise<boolean> {
+  return (await getBlockStatus(db, userId)).isBlocked;
 }
 
 export async function block(
+  db: DbQuery,
   user_id: string,
   user_name: string = "",
   blocked_by: string = "",
   expires_at: number | null = null,
 ): Promise<void> {
-  if (await isBlocked(user_id)) return;
+  if (await isBlocked(db, user_id)) return;
 
   const expires_at_micro = expires_at !== null ? expires_at * 1000 : null;
 
@@ -46,13 +46,14 @@ export async function block(
   return;
 }
 
-export async function unblock(user_id: string): Promise<void> {
+export async function unblock(db: DbQuery, user_id: string): Promise<void> {
   await db`DELETE FROM blocked_users WHERE user_id = ${user_id}`;
 
   return;
 }
 
 export async function updateExpiryTime(
+  db: DbQuery,
   user_id: string,
   expires_at: number,
 ): Promise<void> {
@@ -60,9 +61,9 @@ export async function updateExpiryTime(
   return;
 }
 
-export async function getExpiredBlocks(): Promise<
-  Array<{ user_id: string; duration: number }>
-> {
+export async function getExpiredBlocks(
+  db: DbQuery,
+): Promise<Array<{ user_id: string; duration: number }>> {
   const now = new Date();
 
   const blockedUsers = await db<
@@ -75,7 +76,7 @@ export async function getExpiredBlocks(): Promise<
   }));
 }
 
-export async function getBlockedUsers(): Promise<
+export async function getBlockedUsers(db: DbQuery): Promise<
   Array<{
     userId: string;
     userName: string;

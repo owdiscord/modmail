@@ -27,9 +27,7 @@ import { BotError } from "./BotError";
 import bot from "./bot";
 import config from "./config";
 import { saveAttachment } from "./data/attachments";
-import { isBlocked } from "./data/blocked";
 import { ThreadMessageType, ThreadStatus } from "./data/constants";
-import { getModeratorThreadDisplayRoleName } from "./data/displayRoles";
 import { getLogUrl } from "./data/logs";
 import type { ThreadMessage } from "./data/ThreadMessage";
 import { type GuildStatus, userGuildStatus } from "./data/users";
@@ -40,6 +38,8 @@ import { callAfterThreadCloseScheduleCanceledHooks } from "./hooks/afterThreadCl
 import { callAfterThreadCloseScheduledHooks } from "./hooks/afterThreadCloseScheduled";
 import { callBeforeNewMessageReceivedHooks } from "./hooks/beforeNewMessageReceived";
 import logger from "./logger";
+import { isBlocked } from "./repositories/blocks";
+import { getModeratorThreadDisplayRoleName } from "./repositories/displayRoles";
 import { findNotesByUserId } from "./repositories/notes";
 import {
   getRegisteredUsername,
@@ -1138,7 +1138,7 @@ export function isClosed(thread: Thread): boolean {
 }
 
 export async function recoverDowntimeMessages(db: DbQuery, thread: Thread) {
-  if (await isBlocked(thread.user_id)) return;
+  if (await isBlocked(db, thread.user_id)) return;
   const user = await bot.users.fetch(thread.user_id);
   const dmChannel = await user.createDM();
   if (!dmChannel) return;

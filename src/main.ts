@@ -14,7 +14,6 @@ import {
 import type { Logger } from "pino";
 import { type Commands, createCommandManager } from "./commands";
 import config from "./config";
-import * as blocked from "./data/blocked";
 import { ThreadMessageType, ThreadStatus } from "./data/constants";
 import { createNewThreadForUser, type Thread } from "./data/Thread";
 import { type DbQuery, useDb } from "./db";
@@ -23,6 +22,7 @@ import { createPluginProps, loadPlugins } from "./plugins";
 import { handleLogPageChange } from "./plugins/logs";
 import { handleSnippet } from "./plugins/snippets";
 import { messageQueue, type SerialQueue, threadCreationQueue } from "./queue";
+import * as blocked from "./repositories/blocks";
 import * as threadMessages from "./repositories/threadMessages";
 import * as threads from "./repositories/threads";
 import {
@@ -227,7 +227,7 @@ async function handleMainServerMention(bot: Client, msg: Message) {
   }
 
   // If the person who mentioned the bot is blocked, ignore them
-  if (await blocked.isBlocked(msg.author.id)) return;
+  if (await blocked.isBlocked(db, msg.author.id)) return;
 
   let content = "";
   const mainGuilds = utils.getMainGuilds();
@@ -360,7 +360,7 @@ async function handleUserDM(_bot: Client, msg: Message) {
   const channel = await msg.channel.fetch();
   if (!channel?.isSendable()) return;
 
-  if (await blocked.isBlocked(msg.author.id)) {
+  if (await blocked.isBlocked(db, msg.author.id)) {
     log.debug({ failed_because: "user is blocked" });
 
     return;

@@ -1,22 +1,22 @@
 import { EmbedBuilder, type Message } from "discord.js";
 import humanizeDuration from "humanize-duration";
-import * as blocked from "../data/blocked";
 import type { Thread } from "../data/Thread";
 import logger from "../logger";
 import type { ModuleProps } from "../plugins";
+import * as blocked from "../repositories/blocks";
 import { Spacing } from "../style";
 import { getLogChannel } from "../utils";
 
-export default ({ bot, config, commands }: ModuleProps) => {
+export default ({ db, bot, config, commands }: ModuleProps) => {
   if (!config.allowBlock) return;
 
   async function removeExpiredBlocks() {
-    const expiredBlocks = await blocked.getExpiredBlocks();
+    const expiredBlocks = await blocked.getExpiredBlocks(db);
     if (expiredBlocks.length === 0) return;
 
     const logChannel = await getLogChannel();
     for (const { user_id, duration } of expiredBlocks) {
-      await blocked.unblock(user_id);
+      await blocked.unblock(db, user_id);
       const user =
         bot.users.cache.get(user_id) || (await bot.users.fetch(user_id));
       logChannel.send({
@@ -54,7 +54,7 @@ export default ({ bot, config, commands }: ModuleProps) => {
     const channel = await msg.channel.fetch();
     if (!channel?.isSendable()) return;
 
-    const isBlocked = await blocked.isBlocked(userIdToBlock);
+    const isBlocked = await blocked.isBlocked(db, userIdToBlock);
     if (isBlocked) {
       channel.send("User is already blocked");
       return;
@@ -64,6 +64,7 @@ export default ({ bot, config, commands }: ModuleProps) => {
 
     const user = await bot.users.fetch(userIdToBlock);
     await blocked.block(
+      db,
       userIdToBlock,
       user ? user.username : "",
       msg.author.id,
@@ -115,7 +116,7 @@ export default ({ bot, config, commands }: ModuleProps) => {
     if (!userIdToUnblock) return;
     if (!msg.channel.isSendable()) return;
 
-    const isBlocked = await blocked.isBlocked(userIdToUnblock);
+    const isBlocked = await blocked.isBlocked(db, userIdToUnblock);
     if (!isBlocked) {
       msg.channel.send("User is not blocked");
       return;
@@ -128,7 +129,7 @@ export default ({ bot, config, commands }: ModuleProps) => {
         largest: 2,
         round: true,
       });
-      await blocked.updateExpiryTime(userIdToUnblock, unblockAt);
+      await blocked.updateExpiryTime(db, userIdToUnblock, unblockAt);
       msg.channel.send(
         `Scheduled <@${userIdToUnblock}> (id \`${userIdToUnblock}\`) to be unblocked in ${humanized}`,
       );
@@ -142,7 +143,7 @@ export default ({ bot, config, commands }: ModuleProps) => {
       //   user.send(formatted).catch(noop);
       // }
     } else {
-      await blocked.unblock(userIdToUnblock);
+      await blocked.unblock(db, userIdToUnblock);
       msg.channel.send(
         `Unblocked <@${userIdToUnblock}> (id ${userIdToUnblock}) from modmail`,
       );
@@ -172,7 +173,7 @@ export default ({ bot, config, commands }: ModuleProps) => {
       )
         return;
 
-      const blockStatus = await blocked.getBlockStatus(userIdToCheck);
+      const blockStatus = await blocked.getBlockStatus(db, userIdToCheck);
       if (blockStatus.isBlocked) {
         if (blockStatus.expiresAt) {
           msg.channel.send({
@@ -198,7 +199,7 @@ export default ({ bot, config, commands }: ModuleProps) => {
     "blocklist",
     "",
     async (msg, _args, _thread) => {
-      const blockedUsers = await blocked.getBlockedUsers();
+      const blockedUsers = await blocked.getBlockedUsers(db);
       if (blockedUsers.length === 0 && msg.channel.isSendable()) {
         msg.channel.send("No users are currently blocked.");
         return;
