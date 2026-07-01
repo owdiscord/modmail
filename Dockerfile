@@ -33,4 +33,4 @@ RUN pnpm install --frozen-lockfile --prod
 COPY --from=builder /app/dist ./dist
 COPY migrations/ ./migrations
 
-CMD ["node", "dist/index.js"]
+CMD ["node", "dist/index.mjs"]

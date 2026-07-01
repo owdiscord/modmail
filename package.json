@@ -8,10 +8,10 @@
 	"type": "module",
 	"scripts": {
 		"test": "tsx --test 'src/**/*.test.ts'",
-		"build": "swc ./src -d dist --strip-leading-paths",
+		"build": "tsdown",
 		"typecheck": "tsc --noEmit",
 		"prestart": "pnpm run build",
-		"start": "node dist/index.js",
+		"start": "node dist/index.mjs",
 		"dev": "NODE_ENV=development tsx src/index.ts",
 		"web": "tsx --watch src/web-node.ts",
 		"watch": "NODE_ENV=development tsx --watch src/index.ts",
@@ -45,16 +45,15 @@
 		"yargs-parser": "^21.1.1"
 	},
 	"devDependencies": {
-		"typescript": "^6.0.3",
 		"@biomejs/biome": "^2.3.14",
-		"@swc/cli": "^0.8.1",
-		"@swc/core": "^1.15.33",
 		"@types/humanize-duration": "^3.27.4",
 		"@types/ini": "^4.1.1",
 		"@types/yargs-parser": "^21.0.3",
 		"jsdoc-to-markdown": "^8.0.3",
 		"json-schema-to-jsdoc": "^1.1.1",
-		"tsx": "^4.22.1"
+		"tsdown": "^0.22.3",
+		"tsx": "^4.22.1",
+		"typescript": "^6.0.3"
 	},
 	"engines": {
 		"node": ">= 24.15.0"
