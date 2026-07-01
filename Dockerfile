@@ -31,6 +31,7 @@ RUN pnpm install --frozen-lockfile --prod
 
 # Bring in the compiled JS output and migrations
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/package.json ./
 COPY migrations/ ./migrations
 
 CMD ["pnpm", "run", "start"]
