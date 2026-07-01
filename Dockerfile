@@ -15,7 +15,7 @@ RUN pnpm install --frozen-lockfile
 # Copy the source and typescript config, then compile Typescript to JS with SWC.
 COPY tsconfig.json ./
 COPY src/ ./src/
-RUN pnpm swc src -d dist --strip-leading-paths
+RUN pnpm run build
 
 #
 # --- Runtime stage ----
