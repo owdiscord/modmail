@@ -25,6 +25,8 @@ FROM node:24-alpine AS runtime
 # Same as above, use Corepack to enable pnpm.
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
+WORKDIR /app
+
 # Install production dependencies
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile --prod
