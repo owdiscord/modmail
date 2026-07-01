@@ -2,7 +2,7 @@ import type { Client } from "discord.js";
 import type { Commands } from "./commands";
 import type { ModmailConfig } from "./config";
 import { downloadAttachment, saveAttachment } from "./data/attachments";
-import displayRoles from "./data/displayRoles";
+import * as displayRoles from "./data/displayRoles";
 import { getLogUrl } from "./data/logs";
 import type { DbQuery } from "./db";
 import { afterNewMessageReceived } from "./hooks/afterNewMessageReceived";

@@ -1,7 +1,7 @@
 import { Collection, type Message } from "discord.js";
 import { parseArguments } from "knub-command-manager";
 import type { ModmailConfig } from "../config";
-import type Thread from "../data/Thread";
+import type { Thread } from "../data/Thread";
 import type { DbQuery } from "../db";
 import type { ModuleProps } from "../plugins";
 import {
@@ -29,6 +29,7 @@ export default ({ config, commands, db }: ModuleProps) => {
         if (args.text) {
           // If the snippet exists and we're trying to create a new one, inform the user the snippet already exists
           postSystemMessageWithFallback(
+            db,
             msg.channel,
             thread,
             `Snippet "${args.trigger}" already exists! You can edit or delete it with ${config.prefix}edit_snippet and ${config.prefix}delete_snippet respectively.`,
@@ -36,6 +37,7 @@ export default ({ config, commands, db }: ModuleProps) => {
         } else {
           // If the snippet exists and we're NOT trying to create a new one, show info about the existing snippet
           postSystemMessageWithFallback(
+            db,
             msg.channel,
             thread,
             `\`${config.snippetPrefix}${args.trigger}\` replies with: \`\`\`\n${disableCodeBlocks(snippet.body)}\`\`\``,
@@ -51,6 +53,7 @@ export default ({ config, commands, db }: ModuleProps) => {
             msg.author.id as string,
           );
           postSystemMessageWithFallback(
+            db,
             msg.channel,
             thread,
             `Snippet "${args.trigger}" created!`,
@@ -58,6 +61,7 @@ export default ({ config, commands, db }: ModuleProps) => {
         } else {
           // If the snippet doesn't exist and the user isn't trying to create it, inform them how to create it
           postSystemMessageWithFallback(
+            db,
             msg.channel,
             thread,
             `Snippet "${args.trigger}" doesn't exist! You can create it with \`${config.prefix}snippet ${args.trigger} text\``,
@@ -79,6 +83,7 @@ export default ({ config, commands, db }: ModuleProps) => {
       const snippet = await getSnippet(db, args.trigger as string);
       if (!snippet) {
         postSystemMessageWithFallback(
+          db,
           msg.channel,
           thread,
           `Snippet "${args.trigger}" doesn't exist!`,
@@ -88,6 +93,7 @@ export default ({ config, commands, db }: ModuleProps) => {
 
       await deleteSnippet(db, args.trigger as string);
       postSystemMessageWithFallback(
+        db,
         msg.channel,
         thread,
         `Snippet "${args.trigger}" deleted!`,
@@ -109,6 +115,7 @@ export default ({ config, commands, db }: ModuleProps) => {
       const snippet = await getSnippet(db, trigger);
       if (!snippet) {
         postSystemMessageWithFallback(
+          db,
           msg.channel,
           thread,
           `Snippet "${trigger}" doesn't exist!`,
@@ -125,6 +132,7 @@ export default ({ config, commands, db }: ModuleProps) => {
       );
 
       postSystemMessageWithFallback(
+        db,
         msg.channel,
         thread,
         `Snippet "${args.trigger}" edited!`,
@@ -146,6 +154,7 @@ export default ({ config, commands, db }: ModuleProps) => {
       if (!msg.channel.isSendable()) return;
 
       postSystemMessageWithFallback(
+        db,
         msg.channel,
         thread,
         `Available snippets (prefix ${config.snippetPrefix}):\n${triggers.join(", ")}`,

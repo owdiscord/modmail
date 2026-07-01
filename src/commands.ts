@@ -6,7 +6,7 @@ import {
   TypeConversionError,
 } from "knub-command-manager";
 import config from "./config";
-import type Thread from "./data/Thread";
+import type { Thread } from "./data/Thread";
 import { type DbQuery, useDb } from "./db";
 import * as threads from "./repositories/threads";
 import { getUserMention, isStaff, messageIsOnInboxServer } from "./utils";

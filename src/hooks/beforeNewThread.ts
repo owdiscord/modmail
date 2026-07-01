@@ -1,10 +1,10 @@
 import type { Message, User } from "discord.js";
-import type { CreateNewThreadForUserOpts } from "../data/threads";
+import type { NewThreadParams } from "../data/Thread";
 
 interface BeforeNewThreadHookData {
   user: User;
   message?: Message;
-  opts: CreateNewThreadForUserOpts;
+  opts: NewThreadParams;
   cancel: () => void;
   setCategoryId: (value: string) => void;
 }
@@ -26,7 +26,7 @@ export function beforeNewThread(
 export async function callBeforeNewThreadHooks(input: {
   user: User;
   message?: Message;
-  opts: CreateNewThreadForUserOpts;
+  opts: NewThreadParams;
 }) {
   const result: BeforeNewThreadHookResult = {
     cancelled: false,

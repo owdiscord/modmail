@@ -9,6 +9,7 @@ import {
   cancelScheduledClose,
   closeThread,
   postSystemMessage,
+  replyToUser,
   scheduleClose,
   sendSystemMessageToUser,
 } from "../thread";
@@ -184,7 +185,9 @@ export default ({ config, commands, db }: ModuleProps) => {
         "Is there anything else I can help you with? If not, this ticket will be closed shortly.";
 
       try {
-        await thread.replyToUser(
+        await replyToUser(
+          db,
+          thread,
           msg.member,
           finishingMessage,
           new Collection(),

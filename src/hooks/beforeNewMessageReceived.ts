@@ -1,11 +1,11 @@
 import type { Message, User } from "discord.js";
-import type { CreateNewThreadForUserOpts } from "../data/threads";
 import logger from "../logger.ts";
+import type { NewThreadParams } from "../data/Thread.ts";
 
 interface BeforeNewMessageReceivedHookData {
   user: User;
   message?: Message;
-  opts: CreateNewThreadForUserOpts;
+  opts: NewThreadParams;
   cancel: () => void;
 }
 

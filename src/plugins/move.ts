@@ -70,14 +70,20 @@ export default ({ db, bot, config, commands }: ModuleProps) => {
           lockPermissions: config.syncPermissionsOnMove,
         });
       } catch (e: unknown) {
-        if (e instanceof Error)
-          thread.postSystemMessage(`Failed to move thread: ${e.message}`);
-        else thread.postSystemMessage(`Failed to move thread: ${e}`);
+        postSystemMessage(
+          db,
+          thread,
+          e instanceof Error
+            ? `Failed to move thread: ${e.message}`
+            : `Failed to move thread: ${e}`,
+        );
 
         return;
       }
 
-      thread.postSystemMessage(
+      postSystemMessage(
+        db,
+        thread,
         `⇅ Thread moved to **${targetCategory.name.toUpperCase()}**`,
       );
     },

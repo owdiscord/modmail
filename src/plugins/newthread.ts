@@ -14,12 +14,13 @@ export default ({ bot, db, config, commands }: ModuleProps) => {
 
       const user = await bot.users.fetch(args.userId as string);
       if (!user) {
-        postSystemMessageWithFallback(msg.channel, null, "User not found!");
+        postSystemMessageWithFallback(db, msg.channel, null, "User not found!");
         return;
       }
 
       if (user.bot) {
         postSystemMessageWithFallback(
+          db,
           msg.channel,
           thread,
           "Can't create a thread for a bot",
@@ -33,6 +34,7 @@ export default ({ bot, db, config, commands }: ModuleProps) => {
 
       if (existingThread) {
         postSystemMessageWithFallback(
+          db,
           msg.channel,
           thread,
           `Cannot create a new thread; there is another open thread with this user: <#${existingThread.channel_id}>`,

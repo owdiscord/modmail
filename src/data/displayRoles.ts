@@ -11,9 +11,7 @@ export async function getModeratorDefaultRoleOverride(
   const roleOverride =
     await db`SELECT role_id FROM moderator_role_overrides WHERE thread_id IS NULL AND moderator_id = ${moderatorId} LIMIT 1`;
 
-  if (roleOverride && roleOverride.length === 1) return roleOverride[0].role_id;
-
-  return null;
+  return roleOverride[0]?.role_id || null;
 }
 
 export async function setModeratorDefaultRoleOverride(
@@ -25,7 +23,7 @@ export async function setModeratorDefaultRoleOverride(
   if (existingGlobalOverride) {
     await db`UPDATE moderator_role_overrides SET role_id = ${role_id} WHERE thread_id IS NULL AND moderator_id = ${moderator_id}`;
   } else {
-    await db`INSERT INTO moderator_role_overrides ${db({ thread_id: null, role_id, moderator_id })}`;
+    await db`INSERT INTO moderator_role_overrides (thread_id, role_id, moderator_id) VALUES (null, ${role_id}, ${moderator_id})`;
   }
 }
 
@@ -40,9 +38,7 @@ export async function getModeratorThreadRoleOverride(
   const roleOverride =
     await db`SELECT role_id FROM moderator_role_overrides WHERE thread_id = ${thread_id} AND moderator_id = ${moderator_id} LIMIT 1`;
 
-  if (roleOverride && roleOverride.length === 1) return roleOverride[0].role_id;
-
-  return null;
+  return roleOverride[0]?.role_id || null;
 }
 
 export async function setModeratorThreadRoleOverride(
@@ -58,7 +54,7 @@ export async function setModeratorThreadRoleOverride(
   if (existingThreadOverride) {
     await db`UPDATE moderator_role_overrides SET role_id = ${role_id} WHERE thread_id = ${thread_id} AND moderator_id = ${moderator_id}`;
   } else {
-    await db`INSERT INTO moderator_role_overrides ${db({ thread_id: null, role_id, moderator_id })}`;
+    await db`INSERT INTO moderator_role_overrides (thread_id, role_id, moderator_id) VALUES (null, ${role_id}, ${moderator_id})`;
   }
 }
 
@@ -117,19 +113,3 @@ export async function getModeratorThreadDisplayRoleName(
     ? threadDisplayRole.name
     : config.fallbackRoleName || null;
 }
-
-export default {
-  getModeratorDefaultRoleOverride,
-  setModeratorDefaultRoleOverride,
-  resetModeratorDefaultRoleOverride,
-
-  getModeratorThreadRoleOverride,
-  setModeratorThreadRoleOverride,
-  resetModeratorThreadRoleOverride,
-
-  getModeratorDefaultDisplayRole,
-  getModeratorDefaultDisplayRoleName,
-
-  getModeratorThreadDisplayRole,
-  getModeratorThreadDisplayRoleName,
-};

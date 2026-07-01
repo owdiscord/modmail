@@ -1,7 +1,7 @@
 import { EmbedBuilder, type Message } from "discord.js";
 import humanizeDuration from "humanize-duration";
 import * as blocked from "../data/blocked";
-import type Thread from "../data/Thread";
+import type { Thread } from "../data/Thread";
 import logger from "../logger";
 import type { ModuleProps } from "../plugins";
 import { Spacing } from "../style";

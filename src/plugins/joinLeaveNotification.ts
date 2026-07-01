@@ -1,5 +1,5 @@
 import { Events } from "discord.js";
-import type Thread from "../data/Thread";
+import type { Thread } from "../data/Thread";
 import type { ModuleProps } from "../plugins";
 import * as threads from "../repositories/threads";
 import { postSystemMessage } from "../thread";
