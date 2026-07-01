@@ -603,7 +603,6 @@ export async function postSystemMessage(
   message: Message;
   threadMessage: ThreadMessage;
 }> {
-  console.log("Posting system msg");
   message = typeof message === "string" ? { content: message } : message;
 
   const threadMessage: ThreadMessage = {
@@ -640,7 +639,6 @@ export async function postSystemMessage(
 
   threadMessage.inbox_message_id = msg.id;
   const v = await threadMessages.create(db, threadMessage);
-  console.log(v);
 
   return {
     message: msg,
