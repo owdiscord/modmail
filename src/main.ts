@@ -404,14 +404,11 @@ async function handleUserDM(_bot: Client, msg: Message) {
           `**NOTE:** Could not send auto-response to the user. The error given was: \`${message}\``,
         );
       }
-
-      return;
-    }
-
-    log.debug({
-      thread: thread.id,
-      status: "receiving reply in existing thread",
-    });
+    } else
+      log.debug({
+        thread: thread.id,
+        status: "receiving reply in existing thread",
+      });
 
     await receiveUserReply(db, thread, msg);
   });
