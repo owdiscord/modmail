@@ -42,15 +42,15 @@ console.log(
 
 // Verify node modules have been installed
 
-try {
-  fs.accessSync(path.join(import.meta.dirname, "..", "node_modules"));
-} catch (e) {
-  console.error(e);
-  console.error(
-    'Please run "pnpm install --frozen-lockfile" before starting the bot',
-  );
-  process.exit(1);
-}
+// try {
+//   fs.accessSync(path.join(import.meta.dirname, "..", "node_modules"));
+// } catch (e) {
+//   console.error(e);
+//   console.error(
+//     'Please run "pnpm install --frozen-lockfile" before starting the bot',
+//   );
+//   process.exit(1);
+// }
 
 // Error handling
 // Force crash on unhandled rejections and uncaught exceptions.
