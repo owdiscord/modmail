@@ -3,7 +3,6 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
 import { getMimeType } from "hono/utils/mime";
-import academy from "./academy";
 import config from "./config";
 import { getLocalAttachmentPath } from "./data/attachments";
 import { formatLog } from "./data/logs";
@@ -28,8 +27,6 @@ app.use(
     origin: ["http://localhost:8800", "http://localhost:1234"],
   }),
 );
-
-app.route("/academy", academy);
 
 app.get("/style.css", async (_) => {
   const cssFile = await readFile("./src/web/style.css");
