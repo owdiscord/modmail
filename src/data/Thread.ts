@@ -21,6 +21,8 @@ import {
   findOpenThreadByUserID,
   findThreadByID,
 } from "../repositories/threads.ts";
+import { UnicodePeriod } from "../style.ts";
+import { postNonLogMessage, sendInfoHeader } from "../thread.ts";
 import {
   getInboxGuild,
   getInboxMention,
@@ -32,8 +34,6 @@ import {
   readMultilineConfigValue,
 } from "../utils.ts";
 import { ThreadStatus } from "./constants.ts";
-import { postNonLogMessage, sendInfoHeader } from "../thread.ts";
-import { UnicodePeriod } from "../style.ts";
 
 export type ThreadProps = {
   id: string;

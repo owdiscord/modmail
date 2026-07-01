@@ -1,8 +1,8 @@
 import type { DiscordAPIError, Guild, GuildMember } from "discord.js";
 import logger from "../logger";
 import type { ModuleProps } from "../plugins";
-import { getMainGuilds } from "../utils";
 import { sendInfoHeader } from "../thread";
+import { getMainGuilds } from "../utils";
 
 export default ({ db, commands, bot }: ModuleProps) => {
   commands.addInboxThreadCommand(

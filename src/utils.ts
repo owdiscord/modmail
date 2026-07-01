@@ -22,9 +22,9 @@ import { BotError } from "./BotError";
 import bot from "./bot";
 import config from "./config";
 import type { Thread } from "./data/Thread";
+import type { DbQuery } from "./db";
 import logger from "./logger";
 import { postSystemMessage } from "./thread";
-import type { DbQuery } from "./db";
 
 const userMentionRegex = /^<@!?([0-9]+?)>$/;
 

@@ -1,6 +1,6 @@
 import type { Message, User } from "discord.js";
-import logger from "../logger.ts";
 import type { NewThreadParams } from "../data/Thread.ts";
+import logger from "../logger.ts";
 
 interface BeforeNewMessageReceivedHookData {
   user: User;
