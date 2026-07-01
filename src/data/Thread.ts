@@ -15,10 +15,12 @@ import {
   callBeforeNewThreadHooks,
 } from "../hooks/beforeNewThread";
 import logger from "../logger";
-import type { SerialQueue } from "../queue";
-import * as threads from "../repositories/threads";
-import { UnicodePeriod } from "../style";
-import { postNonLogMessage, sendInfoHeader } from "../thread.ts";
+import type { SerialQueue } from "../queue.ts";
+import {
+  create,
+  findOpenThreadByUserID,
+  findThreadByID,
+} from "../repositories/threads.ts";
 import {
   getInboxGuild,
   getInboxMention,
@@ -28,8 +30,10 @@ import {
   mentionRolesToAllowedMentions,
   mentionRolesToMention,
   readMultilineConfigValue,
-} from "../utils";
-import { ThreadStatus } from "./constants";
+} from "../utils.ts";
+import { ThreadStatus } from "./constants.ts";
+import { postNonLogMessage, sendInfoHeader } from "../thread.ts";
+import { UnicodePeriod } from "../style.ts";
 
 export type ThreadProps = {
   id: string;
@@ -109,9 +113,7 @@ export async function createNewThreadForUser(
       params.ignoreRequirements != null ? params.ignoreRequirements : false;
     const ignoreHooks = params.ignoreHooks != null ? params.ignoreHooks : false;
 
-    const existingThread = (
-      await threads.findOpenThreadByUserID(db, user.id)
-    )[0];
+    const existingThread = (await findOpenThreadByUserID(db, user.id))[0];
 
     if (existingThread) {
       throw new Error(
@@ -273,7 +275,7 @@ export async function createNewThreadForUser(
     }
 
     // Save the new thread in the database
-    const newThreadId = await threads.create(db, {
+    const newThreadId = await create(db, {
       status: ThreadStatus.Open,
       user_id: user.id,
       user_name: user.username,
@@ -284,7 +286,7 @@ export async function createNewThreadForUser(
       alert_ids: "",
       log_storage_type: "local",
       log_storage_data: {},
-      metadata: "{}",
+      metadata: {},
       roles:
         userGuildData
           .get(config.overwatchGuildId)
@@ -292,11 +294,9 @@ export async function createNewThreadForUser(
       server_join: serverJoin || new Date(),
     });
 
-    const newThreadRow = await threads
-      .findThreadByID(db, newThreadId)
-      .catch((err) => {
-        log.error({ message: "could not find latest created thread", err });
-      });
+    const newThreadRow = await findThreadByID(db, newThreadId).catch((err) => {
+      log.error({ message: "could not find latest created thread", err });
+    });
     if (!newThreadRow || newThreadRow.length === 0) {
       log.error({ message: "could not find latest created thread" });
       return null;
