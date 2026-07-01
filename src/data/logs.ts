@@ -1,10 +1,10 @@
 import { join } from "node:path";
 import { useDb } from "../db";
+import { getRegisteredUsername } from "../repositories/registration";
 import { getSelfUrl } from "../utils";
 import { ThreadMessageType } from "./constants";
-import { getRegisteredUsername } from "./Registration";
-import type Thread from "./Thread";
-import ThreadMessage from "./ThreadMessage";
+import type { Thread } from "./Thread";
+import type { ThreadMessage } from "./ThreadMessage";
 
 export const getLogUrl = async (thread: Thread): Promise<string> => {
   return getSelfUrl(`/logs/${thread.id}`);
@@ -59,10 +59,8 @@ export const formatLog = async (
         }
       }
 
-      const originalThreadMessage = message.getMetadataValue(
-        "originalThreadMessage",
-      );
-
+      const originalThreadMessage =
+        (message.metadata?.originalThreadMessage as ThreadMessage) || null;
       const registeredName = await getRegisteredUsername(db, message.user_id);
 
       if (message.message_type === ThreadMessageType.FromUser) {
@@ -104,20 +102,12 @@ export const formatLog = async (
       } else if (message.message_type === ThreadMessageType.Command) {
         line += ` [COMMAND] [${registeredName ? registeredName : message.user_name}] ${message.body}`;
       } else if (message.message_type === ThreadMessageType.ReplyEdited) {
-        if (
-          !originalThreadMessage ||
-          !(originalThreadMessage instanceof ThreadMessage)
-        )
-          return message.body;
+        if (!originalThreadMessage) return message.body;
         line += ` [REPLY EDITED] ${originalThreadMessage.user_name} edited reply ${originalThreadMessage.message_number}:`;
         line += `\n\nBefore:\n${originalThreadMessage.body}`;
-        line += `\n\nAfter:\n${message.getMetadataValue("newBody")}`;
+        line += `\n\nAfter:\n${message.metadata.newBody || "Unknown"}`;
       } else if (message.message_type === ThreadMessageType.ReplyDeleted) {
-        if (
-          !originalThreadMessage ||
-          !(originalThreadMessage instanceof ThreadMessage)
-        )
-          return message.body;
+        if (!originalThreadMessage) return message.body;
         line += ` [REPLY DELETED] ${originalThreadMessage.user_name} deleted reply ${originalThreadMessage.message_number}:`;
         line += `\n\n${originalThreadMessage.body}`;
       } else {

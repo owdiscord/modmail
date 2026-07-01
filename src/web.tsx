@@ -1,25 +1,37 @@
-import { file } from "bun";
+import { readFile } from "node:fs/promises";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
 import { getMimeType } from "hono/utils/mime";
+import config from "./config";
 import { getLocalAttachmentPath } from "./data/attachments";
 import { formatLog } from "./data/logs";
-import { findById } from "./data/threads";
+import type { Thread } from "./data/Thread";
+import type { ThreadMessage } from "./data/ThreadMessage";
 import { useDb } from "./db";
-import { Thread } from "./web/view";
+import { getMessagesInThread } from "./repositories/threadMessages";
+import { findThreadByID } from "./repositories/threads";
+import { Thread as ThreadView } from "./web/view";
 
 const app = new Hono();
 
 const db = useDb();
 
-app.use(cors());
-app.use(secureHeaders());
+app.use(
+  secureHeaders({
+    crossOriginResourcePolicy: "cross-origin",
+  }),
+);
+app.use(
+  cors({
+    origin: ["http://localhost:8800", "http://localhost:1234"],
+  }),
+);
 
 app.get("/style.css", async (_) => {
-  const attachmentFile = file("./src/web/style.css");
+  const cssFile = await readFile("./src/web/style.css");
 
-  return new Response(attachmentFile, {
+  return new Response(cssFile, {
     headers: {
       "Content-Type": "text/css",
     },
@@ -28,18 +40,18 @@ app.get("/style.css", async (_) => {
 
 app.get("/logs/:id", async (c) => {
   const { id } = c.req.param();
-  const thread = await findById(db, id);
+  const thread = (await findThreadByID(db, id))[0] as Thread;
 
   if (!thread) return new Response("Thread not found", { status: 404 });
 
-  const messages = await thread.getThreadMessages();
+  const messages = (await getMessagesInThread(db, id)) as ThreadMessage[];
 
   const params = new URL(c.req.url).searchParams;
   const simple = params.get("simple") !== null;
   const verbose = params.get("verbose") !== null;
 
   if (c.req.query("new") !== undefined) {
-    return c.html(<Thread thread={thread} messages={messages} />);
+    return c.html(<ThreadView thread={thread} messages={messages} />);
   }
 
   // if (simple || verbose) {
@@ -62,18 +74,23 @@ app.get("/attachments/:id/:filename", async (c) => {
     return c.text("One or more parameters were malformed.");
 
   const attachmentPath = getLocalAttachmentPath(id);
-  const attachmentFile = file(attachmentPath);
-  const exists = await attachmentFile.exists();
+  try {
+    const attachmentFile = await readFile(attachmentPath);
 
-  if (!exists) return c.notFound();
+    if (!attachmentFile) return c.notFound();
 
-  const contentType = getMimeType(filename);
+    const contentType = getMimeType(filename);
 
-  return new Response(attachmentFile, {
-    headers: {
-      "Content-Type": contentType,
-    },
-  });
+    c.header("Content-Type", contentType);
+    c.header("Cross-Origin-Resource-Policy", "cross-origin");
+
+    return c.body(attachmentFile);
+  } catch (_e) {
+    return c.notFound();
+  }
 });
 
-export default app;
+export default {
+  ...app,
+  port: config.web.port,
+};

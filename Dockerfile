@@ -1,14 +1,36 @@
-FROM oven/bun:1.3.13-alpine
+#
+# --- Build stage ---
+#
+FROM node:24-alpine AS builder
+
+# Enable and install pnpm using Corepack, the new in-built Node tool.
+RUN corepack enable && corepack prepare pnpm@latest --activate
 
 WORKDIR /app
 
-COPY package.json bun.lock .
+# Copy the manifests and install all deps - this includes dev deps for the build stage.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN pnpm install --frozen-lockfile
 
-# Install deps
-RUN bun install --frozen-lockfile
+# Copy the source and typescript config, then compile Typescript to JS with SWC.
+COPY tsconfig.json ./
+COPY src/ ./src/
+RUN pnpm swc src -d dist --strip-leading-paths
 
-COPY ./src ./src
-COPY ./migrations ./migrations
-COPY tsconfig.json tsconfig.json
+#
+# --- Runtime stage ----
+#
+FROM node:24-alpine AS runtime
 
-CMD ["bun", "src/index.js"]
+# Same as above, use Corepack to enable pnpm.
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+# Install production dependencies
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN pnpm install --frozen-lockfile --prod
+
+# Bring in the compiled JS output and migrations
+COPY --from=builder /app/dist ./dist
+COPY migrations/ ./migrations
+
+CMD ["node", "dist/index.js"]

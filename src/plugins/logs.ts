@@ -1,4 +1,3 @@
-import type { SQL } from "bun";
 import {
   ButtonBuilder,
   ButtonStyle,
@@ -11,13 +10,13 @@ import {
 } from "discord.js";
 import { ThreadStatus } from "../data/constants";
 import { getLogUrl } from "../data/logs";
-import type Thread from "../data/Thread";
-import * as threads from "../data/threads";
-import { getUserThreadsClosedCount } from "../data/threads";
+import type { Thread } from "../data/Thread";
+import type { DbQuery } from "../db";
+import logger from "../logger";
 import type { ModuleProps } from "../plugins";
+import * as threads from "../repositories/threads";
 import { Emoji } from "../style";
 import { getSelfUrl } from "../utils";
-import logger from "../logger";
 
 const LOG_LINES_PER_PAGE = 12;
 
@@ -50,7 +49,7 @@ export default ({ db, commands }: ModuleProps) => {
     if (!user) return;
 
     const channel = await msg.channel.fetch();
-    if (!channel || !channel.isSendable()) return;
+    if (!channel?.isSendable()) return;
 
     const totalUserThreads = await threads.getClosedThreadCountByUserId(
       db,
@@ -92,12 +91,11 @@ export default ({ db, commands }: ModuleProps) => {
     const threadId = args.threadId || _thread?.id;
     if (!threadId) return;
 
-    const thread =
-      (await threads.findById(db, threadId as string)) ||
-      (await threads.findByThreadNumber(db, threadId as number));
+    const thread = ((await threads.findThreadByID(db, threadId as string)) ||
+      (await threads.findThreadByNumber(db, threadId as number)))[0] as Thread;
     if (!thread) return;
 
-    const threadNumber = await getUserThreadsClosedCount(
+    const threadNumber = await threads.getUserThreadsClosedCount(
       db,
       thread.user_id,
       thread.created_at,
@@ -105,7 +103,7 @@ export default ({ db, commands }: ModuleProps) => {
 
     const channel = await msg.channel.fetch();
 
-    if (!channel || !channel.isSendable()) return;
+    if (!channel?.isSendable()) return;
 
     const logUrl = await getLogUrl(thread);
     if (logUrl) {
@@ -215,7 +213,7 @@ export default ({ db, commands }: ModuleProps) => {
 
 async function threadInfoCmd(msg: Message, thread: Thread) {
   const channel = await msg.channel.fetch();
-  if (!channel || !channel.isSendable()) return;
+  if (!channel?.isSendable()) return;
 
   const embed = new EmbedBuilder();
   embed.setTitle(`Thread with ${thread.user_name}`);
@@ -295,7 +293,7 @@ export async function logsComponent(
 }
 
 export async function handleLogPageChange(
-  db: SQL,
+  db: DbQuery,
   userId: string,
   displayName: string,
   page: number,

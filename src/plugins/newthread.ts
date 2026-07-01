@@ -1,8 +1,8 @@
-import {
-  createNewThreadForUser,
-  findOpenThreadByUserId,
-} from "../data/threads";
+import { createNewThreadForUser, type Thread } from "../data/Thread";
 import type { ModuleProps } from "../plugins";
+import { threadCreationQueue } from "../queue";
+import { findOpenThreadByUserID } from "../repositories/threads";
+import { postSystemMessage } from "../thread";
 import { postSystemMessageWithFallback } from "../utils";
 
 export default ({ bot, db, config, commands }: ModuleProps) => {
@@ -14,12 +14,13 @@ export default ({ bot, db, config, commands }: ModuleProps) => {
 
       const user = await bot.users.fetch(args.userId as string);
       if (!user) {
-        postSystemMessageWithFallback(msg.channel, null, "User not found!");
+        postSystemMessageWithFallback(db, msg.channel, null, "User not found!");
         return;
       }
 
       if (user.bot) {
         postSystemMessageWithFallback(
+          db,
           msg.channel,
           thread,
           "Can't create a thread for a bot",
@@ -27,9 +28,13 @@ export default ({ bot, db, config, commands }: ModuleProps) => {
         return;
       }
 
-      const existingThread = await findOpenThreadByUserId(db, user.id);
+      const existingThread = (
+        await findOpenThreadByUserID(db, user.id)
+      )[0] as Thread;
+
       if (existingThread) {
         postSystemMessageWithFallback(
+          db,
           msg.channel,
           thread,
           `Cannot create a new thread; there is another open thread with this user: <#${existingThread.channel_id}>`,
@@ -37,16 +42,23 @@ export default ({ bot, db, config, commands }: ModuleProps) => {
         return;
       }
 
-      const createdThread = await createNewThreadForUser(db, user, {
-        quiet: true,
-        ignoreRequirements: true,
-        ignoreHooks: true,
-        source: "command",
-      });
+      const createdThread = await createNewThreadForUser(
+        db,
+        threadCreationQueue,
+        user,
+        {
+          quiet: true,
+          ignoreRequirements: true,
+          ignoreHooks: true,
+          source: "command",
+        },
+      );
 
       if (createdThread) {
         msg.channel.send(`Thread opened: <#${createdThread.channel_id}>`);
-        createdThread.postSystemMessage(
+        postSystemMessage(
+          db,
+          createdThread,
           `Thread was opened by ${msg.member?.nickname || config.useDisplaynames ? msg.author.globalName || msg.author.username : msg.author.username}`,
         );
       }

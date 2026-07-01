@@ -11,6 +11,9 @@
 
   --color-link: #76aff6;
 
+  --color-info-bg: #323c4b;
+  --color-info-fg: #8ebefa;
+
   --color-white: #fff;
   --color-mod: #f86d1d;
   --color-admin: #4781ff;
@@ -168,7 +171,6 @@ body {
   margin-top: 1ch;
 
   & .server-name {
-    margin: 0;
     font-family: "gg sans Bold", sans-serif;
     font-weight: 700;
     color: #fff;
@@ -183,6 +185,30 @@ body {
     font-weight: 600;
     margin: 0;
   }
+}
+
+[data-role="mod"],
+[data-role="moderator"],
+[data-role="trainee"] {
+  color: var(--color-mod);
+}
+
+[data-role="admin"],
+[data-role="administrator"] {
+  color: var(--color-admin);
+}
+
+[data-message-type="system"],
+[data-message-type="system-to-user"] {
+  --user-color: var(--color-mod);
+}
+
+[data-message-type="from-user"] {
+  --user-color: var(--color-white);
+}
+
+[data-message-type="internal"] {
+  --user-color: var(--color-mod);
 }
 
 .server-roles {
@@ -226,30 +252,6 @@ body {
       border-radius: 100%;
     }
   }
-}
-
-[data-role="mod"],
-[data-role="moderator"],
-[data-role="trainee"] {
-  color: var(--color-mod);
-}
-
-[data-role="admin"],
-[data-role="administrator"] {
-  color: var(--color-admin);
-}
-
-[data-message-type="system"],
-[data-message-type="system-to-user"] {
-  --user-color: var(--color-mod);
-}
-
-[data-message-type="from-user"] {
-  --user-color: var(--color-white);
-}
-
-[data-message-type="internal"] {
-  --user-color: var(--color-mod);
 }
 
 .msg-embed {

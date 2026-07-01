@@ -1,10 +1,10 @@
 import type { Message, User } from "discord.js";
-import type { CreateNewThreadForUserOpts } from "../data/threads";
+import type { NewThreadParams } from "../data/Thread";
 
 interface AfterNewMessageReceivedHookData {
   user: User;
   message?: Message;
-  opts: CreateNewThreadForUserOpts;
+  opts: NewThreadParams;
 }
 
 export type AfterNewMessageReceivedHookFn = (

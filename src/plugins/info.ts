@@ -1,9 +1,10 @@
 import type { DiscordAPIError, Guild, GuildMember } from "discord.js";
-import type { ModuleProps } from "../plugins";
-import { getMainGuilds } from "../utils";
 import logger from "../logger";
+import type { ModuleProps } from "../plugins";
+import { sendInfoHeader } from "../thread";
+import { getMainGuilds } from "../utils";
 
-export default ({ commands, bot }: ModuleProps) => {
+export default ({ db, commands, bot }: ModuleProps) => {
   commands.addInboxThreadCommand(
     "header",
     "",
@@ -37,7 +38,7 @@ export default ({ commands, bot }: ModuleProps) => {
       }
 
       try {
-        await thread.sendInfoHeader(user, userGuildData);
+        await sendInfoHeader(db, thread, user, userGuildData);
       } catch (err) {
         logger.error({ err }, "cant send header");
       }

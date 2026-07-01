@@ -1,10 +1,9 @@
-import type { SQL } from "bun";
 import type { Client } from "discord.js";
 import type { Commands } from "./commands";
 import type { ModmailConfig } from "./config";
 import { downloadAttachment, saveAttachment } from "./data/attachments";
-import displayRoles from "./data/displayRoles";
 import { getLogUrl } from "./data/logs";
+import type { DbQuery } from "./db";
 import { afterNewMessageReceived } from "./hooks/afterNewMessageReceived";
 import { afterThreadClose } from "./hooks/afterThreadClose";
 import { afterThreadCloseScheduleCanceled } from "./hooks/afterThreadCloseScheduleCanceled";
@@ -28,12 +27,13 @@ import snippets from "./plugins/snippets";
 import staffRegistration from "./plugins/staffRegistration";
 import suspend from "./plugins/suspend";
 import typingProxy from "./plugins/typingProxy";
+import * as displayRoles from "./repositories/displayRoles";
 
 export type ModuleProps = {
   bot: Client;
   config: ModmailConfig;
   commands: Commands;
-  db: SQL;
+  db: DbQuery;
   attachments: {
     downloadAttachment: typeof downloadAttachment;
     saveAttachment: typeof saveAttachment;
@@ -87,7 +87,7 @@ export function createPluginProps({
   commands,
 }: {
   bot: Client;
-  db: SQL;
+  db: DbQuery;
   config: ModmailConfig;
   commands: Commands;
 }): ModuleProps {

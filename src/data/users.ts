@@ -1,10 +1,15 @@
 import type { Client, GuildMember, User } from "discord.js";
 import config from "../config";
 
+export interface GuildStatus {
+  main: GuildMember | null;
+  ban: GuildMember | null;
+}
+
 export async function userGuildStatus(
   bot: Client,
   user: User,
-): Promise<{ main: GuildMember | null; ban: GuildMember | null }> {
+): Promise<GuildStatus> {
   const mainGuild = await bot.guilds.fetch(config.overwatchGuildId);
   const banGuild = await bot.guilds.fetch(config.banGuildId);
 

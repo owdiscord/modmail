@@ -1,13 +1,20 @@
 import { Collection, type Message } from "discord.js";
 import { parseArguments } from "knub-command-manager";
 import type { ModmailConfig } from "../config";
-import type { Snippet } from "../data/Snippet";
-import * as snippets from "../data/snippets";
-import type Thread from "../data/Thread";
+import type { Thread } from "../data/Thread";
+import type { DbQuery } from "../db";
 import type { ModuleProps } from "../plugins";
+import {
+  addSnippet,
+  allSnippets,
+  deleteSnippet,
+  getSnippet,
+  type Snippet,
+} from "../repositories/snippets";
+import { replyToUser } from "../thread";
 import { disableCodeBlocks, postSystemMessageWithFallback } from "../utils";
 
-export default ({ config, commands }: ModuleProps) => {
+export default ({ config, commands, db }: ModuleProps) => {
   if (!config.allowSnippets) return;
 
   // Show or add a snippet
@@ -15,13 +22,14 @@ export default ({ config, commands }: ModuleProps) => {
     "snippet",
     "<trigger> [text$]",
     async (msg, args, thread) => {
-      const snippet = await snippets.get(args.trigger as string);
+      const snippet = await getSnippet(db, args.trigger as string);
       if (!msg.channel.isSendable()) return;
 
       if (snippet) {
         if (args.text) {
           // If the snippet exists and we're trying to create a new one, inform the user the snippet already exists
           postSystemMessageWithFallback(
+            db,
             msg.channel,
             thread,
             `Snippet "${args.trigger}" already exists! You can edit or delete it with ${config.prefix}edit_snippet and ${config.prefix}delete_snippet respectively.`,
@@ -29,6 +37,7 @@ export default ({ config, commands }: ModuleProps) => {
         } else {
           // If the snippet exists and we're NOT trying to create a new one, show info about the existing snippet
           postSystemMessageWithFallback(
+            db,
             msg.channel,
             thread,
             `\`${config.snippetPrefix}${args.trigger}\` replies with: \`\`\`\n${disableCodeBlocks(snippet.body)}\`\`\``,
@@ -37,12 +46,14 @@ export default ({ config, commands }: ModuleProps) => {
       } else {
         if (args.text) {
           // If the snippet doesn't exist and the user wants to create it, create it
-          await snippets.add(
+          await addSnippet(
+            db,
             args.trigger as string,
             args.text as string,
             msg.author.id as string,
           );
           postSystemMessageWithFallback(
+            db,
             msg.channel,
             thread,
             `Snippet "${args.trigger}" created!`,
@@ -50,6 +61,7 @@ export default ({ config, commands }: ModuleProps) => {
         } else {
           // If the snippet doesn't exist and the user isn't trying to create it, inform them how to create it
           postSystemMessageWithFallback(
+            db,
             msg.channel,
             thread,
             `Snippet "${args.trigger}" doesn't exist! You can create it with \`${config.prefix}snippet ${args.trigger} text\``,
@@ -68,9 +80,10 @@ export default ({ config, commands }: ModuleProps) => {
     async (msg, args, thread) => {
       if (!msg.channel.isSendable()) return;
 
-      const snippet = await snippets.get(args.trigger as string);
+      const snippet = await getSnippet(db, args.trigger as string);
       if (!snippet) {
         postSystemMessageWithFallback(
+          db,
           msg.channel,
           thread,
           `Snippet "${args.trigger}" doesn't exist!`,
@@ -78,8 +91,9 @@ export default ({ config, commands }: ModuleProps) => {
         return;
       }
 
-      await snippets.del(args.trigger as string);
+      await deleteSnippet(db, args.trigger as string);
       postSystemMessageWithFallback(
+        db,
         msg.channel,
         thread,
         `Snippet "${args.trigger}" deleted!`,
@@ -98,9 +112,10 @@ export default ({ config, commands }: ModuleProps) => {
 
       const trigger = (args.trigger as string) || "";
 
-      const snippet = await snippets.get(trigger);
+      const snippet = await getSnippet(db, trigger);
       if (!snippet) {
         postSystemMessageWithFallback(
+          db,
           msg.channel,
           thread,
           `Snippet "${trigger}" doesn't exist!`,
@@ -108,10 +123,16 @@ export default ({ config, commands }: ModuleProps) => {
         return;
       }
 
-      await snippets.del(trigger);
-      await snippets.add(trigger, args.text as string, msg.author.id as string);
+      await deleteSnippet(db, trigger);
+      await addSnippet(
+        db,
+        trigger,
+        args.text as string,
+        msg.author.id as string,
+      );
 
       postSystemMessageWithFallback(
+        db,
         msg.channel,
         thread,
         `Snippet "${args.trigger}" edited!`,
@@ -126,13 +147,14 @@ export default ({ config, commands }: ModuleProps) => {
     "snippets",
     [],
     async (msg, _args, thread) => {
-      const allSnippets = await snippets.all();
-      const triggers = allSnippets.map((s: Snippet) => s.trigger);
+      const all = await allSnippets(db);
+      const triggers = all.map((s: Snippet) => s.trigger);
       triggers.sort();
 
       if (!msg.channel.isSendable()) return;
 
       postSystemMessageWithFallback(
+        db,
         msg.channel,
         thread,
         `Available snippets (prefix ${config.snippetPrefix}):\n${triggers.join(", ")}`,
@@ -145,6 +167,7 @@ export default ({ config, commands }: ModuleProps) => {
 };
 
 export async function handleSnippet(
+  db: DbQuery,
   msg: Message,
   config: ModmailConfig,
   thread: Thread,
@@ -162,7 +185,7 @@ export async function handleSnippet(
   const rawArgs = matches[2] || "";
   if (!trigger) return;
 
-  const snippet = await snippets.get(trigger);
+  const snippet = await getSnippet(db, trigger);
   if (!snippet) return;
 
   const args = (rawArgs ? parseArguments(rawArgs) : []).map((arg) => arg.value);
@@ -179,7 +202,9 @@ export async function handleSnippet(
 
   if (!msg.member) return;
 
-  const replied = await thread.replyToUser(
+  const replied = await replyToUser(
+    db,
+    thread,
     msg.member,
     rendered,
     new Collection(),

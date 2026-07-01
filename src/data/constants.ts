@@ -16,6 +16,10 @@ export enum ThreadMessageType {
   ReplyDeleted = 9,
 }
 
+export function threadMessageTypeInt(type_: ThreadMessageType): number {
+  return type_;
+}
+
 // https://discord.com/developers/docs/resources/channel#channel-object-channel-types
 export const DISCORD_CHANNEL_TYPES = {
   GUILD_TEXT: 0,

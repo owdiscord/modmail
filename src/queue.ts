@@ -1,3 +1,19 @@
+export class SerialQueue {
+  private pending: Promise<unknown> = Promise.resolve();
+
+  enqueue<T>(task: () => Promise<T>): Promise<T> {
+    const result = this.pending.then(
+      () => task(),
+      () => task(),
+    );
+    this.pending = result.catch(() => {});
+    return result;
+  }
+}
+
+// Thread creation queue
+export const threadCreationQueue = new SerialQueue();
+
 export class Queue {
   private running: boolean;
   private queue: Array<() => Promise<void>>;

@@ -1,11 +1,11 @@
 import type { Message, User } from "discord.js";
-import type { CreateNewThreadForUserOpts } from "../data/threads";
+import type { NewThreadParams } from "../data/Thread.ts";
 import logger from "../logger.ts";
 
 interface BeforeNewMessageReceivedHookData {
   user: User;
   message?: Message;
-  opts: CreateNewThreadForUserOpts;
+  opts: NewThreadParams;
   cancel: () => void;
 }
 
@@ -39,7 +39,7 @@ export async function callBeforeNewMessageReceivedHooks(
   };
 
   for (const hook of beforeNewMessageReceivedHooks) {
-    logger.debug({ data, hook }, "calling hook")
+    logger.debug({ data, hook }, "calling hook");
     await hook(data);
   }
 

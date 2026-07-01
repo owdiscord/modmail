@@ -1,10 +1,18 @@
 import { ThreadStatus } from "../data/constants";
+import type { ModuleProps } from "../plugins";
 import {
-  findOpenThreadByUserId,
+  findOpenThreadByUserID,
   findSuspendedThreadByChannelId,
   getThreadsThatShouldBeSuspended,
-} from "../data/threads";
-import type { ModuleProps } from "../plugins";
+  suspendThread,
+} from "../repositories/threads";
+import {
+  cancelScheduledSuspend,
+  postSystemMessage,
+  scheduleSuspend,
+  suspend,
+  unsuspend,
+} from "../thread";
 import { humanizeDelay } from "../utils";
 
 export default ({ db, config, commands }: ModuleProps) => {
@@ -14,8 +22,10 @@ export default ({ db, config, commands }: ModuleProps) => {
     const threadsToBeSuspended = await getThreadsThatShouldBeSuspended(db);
     for (const thread of threadsToBeSuspended) {
       if (thread.status === ThreadStatus.Open) {
-        await thread.suspend();
-        await thread.postSystemMessage(
+        await suspendThread(db, thread.id);
+        await postSystemMessage(
+          db,
+          thread,
           `**Thread suspended** as scheduled by ${thread.scheduled_suspend_name}. This thread will act as closed until unsuspended with \`${config.prefix}unsuspend\``,
         );
       }
@@ -41,10 +51,14 @@ export default ({ db, config, commands }: ModuleProps) => {
       if (!thread) return;
       // Cancel timed suspend
       if (thread.scheduled_suspend_at) {
-        await thread.cancelScheduledSuspend();
-        thread.postSystemMessage("Cancelled scheduled suspension");
+        await cancelScheduledSuspend(db, thread);
+        postSystemMessage(db, thread, "Cancelled scheduled suspension");
       } else {
-        thread.postSystemMessage("Thread is not scheduled to be suspended");
+        postSystemMessage(
+          db,
+          thread,
+          "Thread is not scheduled to be suspended",
+        );
       }
     },
   );
@@ -55,21 +69,25 @@ export default ({ db, config, commands }: ModuleProps) => {
     async (msg, args, thread) => {
       if (!thread) return;
       if (thread.status === ThreadStatus.Suspended) {
-        thread.postSystemMessage("Thread is already suspended.");
+        postSystemMessage(db, thread, "Thread is already suspended.");
         return;
       }
       if (args.delay && typeof args.delay === "number") {
-        await thread.scheduleSuspend(args.delay, msg.author);
+        await scheduleSuspend(db, thread, args.delay, msg.author);
 
-        thread.postSystemMessage(
+        postSystemMessage(
+          db,
+          thread,
           `Thread will be suspended in ${humanizeDelay(args.delay)}. Use \`${config.prefix}suspend cancel\` to cancel.`,
         );
 
         return;
       }
 
-      await thread.suspend();
-      thread.postSystemMessage(
+      await suspend(db, thread);
+      postSystemMessage(
+        db,
+        thread,
         `**Thread suspended!** This thread will act as closed until unsuspended with \`${config.prefix}unsuspend\``,
       );
     },
@@ -81,7 +99,7 @@ export default ({ db, config, commands }: ModuleProps) => {
     [],
     async (msg, _args, thread) => {
       if (thread) {
-        thread.postSystemMessage("Thread is not suspended");
+        postSystemMessage(db, thread, "Thread is not suspended");
         return;
       }
 
@@ -92,16 +110,20 @@ export default ({ db, config, commands }: ModuleProps) => {
         return;
       }
 
-      const otherOpenThread = await findOpenThreadByUserId(db, thread.user_id);
+      const otherOpenThread = (
+        await findOpenThreadByUserID(db, thread.user_id)
+      )[0];
       if (otherOpenThread) {
-        thread.postSystemMessage(
+        postSystemMessage(
+          db,
+          thread,
           `Cannot unsuspend; there is another open thread with this user: <#${otherOpenThread.channel_id}>`,
         );
         return;
       }
 
-      await thread.unsuspend();
-      thread.postSystemMessage("**Thread unsuspended!**");
+      await unsuspend(db, thread);
+      postSystemMessage(db, thread, "**Thread unsuspended!**");
     },
   );
 };

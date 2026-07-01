@@ -11,20 +11,33 @@ import {
   type OmitPartialGroupDMChannel,
   type PartialMessage,
 } from "discord.js";
+import type { Logger } from "pino";
 import { type Commands, createCommandManager } from "./commands";
 import config from "./config";
-import * as blocked from "./data/blocked";
-import { ACCIDENTAL_THREAD_MESSAGES } from "./data/constants";
-import * as threads from "./data/threads";
-import { getAllOpenThreads } from "./data/threads";
-import { useDb } from "./db";
+import { ThreadMessageType, ThreadStatus } from "./data/constants";
+import { createNewThreadForUser, type Thread } from "./data/Thread";
+import { type DbQuery, useDb } from "./db";
+import logger from "./logger";
 import { createPluginProps, loadPlugins } from "./plugins";
 import { handleLogPageChange } from "./plugins/logs";
 import { handleSnippet } from "./plugins/snippets";
-import { messageQueue } from "./queue";
+import { messageQueue, type SerialQueue, threadCreationQueue } from "./queue";
+import * as blocked from "./repositories/blocks";
+import * as threadMessages from "./repositories/threadMessages";
+import * as threads from "./repositories/threads";
+import {
+  closeThread,
+  formatMessageAsUserReply,
+  postSystemMessage,
+  receiveUserReply,
+  recoverDowntimeMessages,
+  replyToUser,
+  saveChatMessageToLogs,
+  saveCommandMessageToLogs,
+  sendSystemMessageToUser,
+} from "./thread";
 import * as utils from "./utils";
 import { postError } from "./utils";
-import logger from "./logger";
 
 const db = useDb();
 
@@ -89,10 +102,10 @@ export async function start(bot: Client) {
       "Plugins loaded, now listening to DMs",
     );
 
-    const openThreads = await getAllOpenThreads(db);
+    const openThreads = await threads.getAllOpenThreads(db);
     for (const thread of openThreads) {
       try {
-        await thread.recoverDowntimeMessages();
+        await recoverDowntimeMessages(db, thread);
       } catch (err) {
         logger.error(
           { user_id: thread.user_id, err },
@@ -172,7 +185,7 @@ function initialiseListeners(bot: Client, commands: Commands) {
 
     if (channel.guildId || channel.guildId !== utils.getInboxGuild().id) return;
 
-    const thread = await threads.findOpenThreadByChannelId(db, channel.id);
+    const thread = await threads.findOpenThreadByChannelID(db, channel.id);
     if (!thread) return;
 
     logger.info(
@@ -181,10 +194,10 @@ function initialiseListeners(bot: Client, commands: Commands) {
     );
     if (config.closeMessage) {
       const closeMessage = utils.readMultilineConfigValue(config.closeMessage);
-      await thread.sendSystemMessageToUser(closeMessage).catch(() => {});
+      await sendSystemMessageToUser(db, thread, closeMessage).catch(() => {});
     }
 
-    await thread.close("", true);
+    await closeThread(db, thread, "", true);
 
     const logChannel = await utils.getLogChannel();
     logChannel.send(
@@ -214,7 +227,7 @@ async function handleMainServerMention(bot: Client, msg: Message) {
   }
 
   // If the person who mentioned the bot is blocked, ignore them
-  if (await blocked.isBlocked(msg.author.id)) return;
+  if (await blocked.isBlocked(db, msg.author.id)) return;
 
   let content = "";
   const mainGuilds = utils.getMainGuilds();
@@ -260,10 +273,13 @@ async function handleInboxServerMessage(
     (msg.content.startsWith(config.snippetPrefix) ||
       msg.content.startsWith(config.anonSnippetPrefix));
 
-  const thread = await threads.findByChannelId(db, msg.channel.id);
+  const thread = (
+    await threads.findByChannelID(db, msg.channel.id)
+  )[0] as Thread;
 
   if (isSnippet && thread) {
     await handleSnippet(
+      db,
       msg,
       config,
       thread,
@@ -280,7 +296,7 @@ async function handleInboxServerMessage(
       // Thread-specific command
       const threadErr = await commands.handleCommand(msg, "thread");
       if (threadErr) errors.push(threadErr);
-      thread.saveCommandMessageToLogs(msg);
+      saveCommandMessageToLogs(db, thread, msg);
     }
 
     // Inbox server command (not in a thread)
@@ -305,7 +321,9 @@ async function handleInboxServerMessage(
     // all staff chat messages in thread channels as replies
     if (!author || !utils.isStaff(author)) return;
 
-    const replied = await thread.replyToUser(
+    const replied = await replyToUser(
+      db,
+      thread,
       msg.member,
       msg.content.trim(),
       msg.attachments,
@@ -316,7 +334,7 @@ async function handleInboxServerMessage(
     if (replied) msg.delete();
   } else {
     // Otherwise just save the messages as "chat" in the logs
-    if (thread) thread.saveChatMessageToLogs(msg);
+    if (thread) saveChatMessageToLogs(db, thread, msg);
   }
 }
 
@@ -340,9 +358,9 @@ async function handleUserDM(_bot: Client, msg: Message) {
   });
 
   const channel = await msg.channel.fetch();
-  if (!channel || !channel.isSendable()) return;
+  if (!channel?.isSendable()) return;
 
-  if (await blocked.isBlocked(msg.author.id)) {
+  if (await blocked.isBlocked(db, msg.author.id)) {
     log.debug({ failed_because: "user is blocked" });
 
     return;
@@ -359,76 +377,74 @@ async function handleUserDM(_bot: Client, msg: Message) {
 
   // Private message handling is queued so e.g. multiple message in quick succession don't result in multiple channels being created
   messageQueue.add(async () => {
-    let thread = await threads.findOpenThreadByUserId(db, msg.author.id);
-    const createNewThread = thread == null;
-    log.debug({ thread }, "adding message to queue");
+    const [thread, isNew] = await findOrCreateThread(
+      db,
+      log,
+      threadCreationQueue,
+      msg,
+    );
 
-    // New thread
-    if (createNewThread) {
-      // Ignore messages that shouldn't usually open new threads, such as "ok", "thanks", etc.
-      if (
-        config.ignoreAccidentalThreads &&
-        msg.content &&
-        ACCIDENTAL_THREAD_MESSAGES.includes(msg.content.trim().toLowerCase())
-      )
-        return;
+    if (isNew && config.responseMessage) {
+      const responseMessage = utils.readMultilineConfigValue(
+        config.responseMessage,
+      );
 
-      const newThread = await threads
-        .createNewThreadForUser(db, author, {
-          quiet: false,
-          source: "dm",
-          message: msg,
-        })
-        .catch((e) => {
-          log.error({
-            failed_because: "could not make new thread",
-            err: e,
-          });
+      try {
+        const postToThreadChannel = config.showResponseMessageInInbox;
+
+        await sendSystemMessageToUser(db, thread, responseMessage, {
+          postToThreadChannel,
         });
-      if (newThread) {
-        thread = newThread;
-        log.debug({
-          thread: newThread.id,
-          status: "receiving reply in new thread",
-        });
-      } else {
-        log.error({
-          failed_because: "could not make new thread",
-        });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : err;
+
+        await postSystemMessage(
+          db,
+          thread,
+          `**NOTE:** Could not send auto-response to the user. The error given was: \`${message}\``,
+        );
       }
+
+      return;
     }
 
-    if (thread) {
-      log.debug({
-        thread: thread.id,
-        status: "receiving reply in existing thread",
-      });
-      await thread.receiveUserReply(msg);
+    log.debug({
+      thread: thread.id,
+      status: "receiving reply in existing thread",
+    });
 
-      if (createNewThread) {
-        // Send auto-reply to the user
-        if (config.responseMessage) {
-          const responseMessage = utils.readMultilineConfigValue(
-            config.responseMessage,
-          );
-
-          try {
-            const postToThreadChannel = config.showResponseMessageInInbox;
-
-            await thread.sendSystemMessageToUser(responseMessage, {
-              postToThreadChannel,
-            });
-          } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : err;
-
-            await thread.postSystemMessage(
-              `**NOTE:** Could not send auto-response to the user. The error given was: \`${message}\``,
-            );
-          }
-        }
-      }
-    }
+    await receiveUserReply(db, thread, msg);
   });
+}
+
+async function findOrCreateThread(
+  db: DbQuery,
+  log: Logger,
+  queue: SerialQueue,
+  msg: Message,
+): Promise<[Thread, boolean]> {
+  const threadRow = await threads.findOpenThreadByUserID(db, msg.author.id);
+  if (threadRow[0]) return [threadRow[0] as Thread, false];
+
+  const newThread = await createNewThreadForUser(db, queue, msg.author, {
+    quiet: false,
+    source: "dm",
+    message: msg,
+  }).catch((e) => {
+    log.error({
+      failed_because: "could not make new thread",
+      err: e,
+    });
+  });
+
+  log.debug({
+    thread: newThread?.id,
+    status: "receiving reply in new thread",
+  });
+
+  if (newThread) return [newThread, true];
+
+  throw "could not find or create a new thread";
 }
 
 /**
@@ -441,7 +457,7 @@ async function handleMessageEdit(
     Message<boolean> | PartialMessage<boolean>
   > | null,
 ) {
-  if (!msg || !msg.content) return;
+  if (!msg?.content) return;
 
   const threadMessage = await threads.findThreadMessageByDMMessageId(
     db,
@@ -449,10 +465,10 @@ async function handleMessageEdit(
   );
   if (!threadMessage) return;
 
-  const thread = await threads.findById(db, threadMessage.thread_id);
+  const thread = (await threads.findThreadByID(db, threadMessage.thread_id))[0];
   if (!thread) return;
 
-  if (thread.isClosed()) return;
+  if (thread.status === ThreadStatus.Closed) return;
 
   // FIXME: There is a small bug here. When we don't have the old message cached (i.e. when we use threadMessage.body as oldContent),
   //        multiple edits of the same message will show the unedited original content as the "before" version in the logs.
@@ -461,7 +477,7 @@ async function handleMessageEdit(
   const newContent = oldMessage?.content || threadMessage.body;
   const oldContent = msg.content;
 
-  if (threadMessage.isFromUser()) {
+  if (threadMessage.message_type === ThreadMessageType.FromUser) {
     const editMessage = utils.disableLinkPreviews(
       `**The user edited their message:**\n\`B:\` ${oldContent}\n\`A:\` ${newContent}`,
     );
@@ -472,9 +488,9 @@ async function handleMessageEdit(
     // This mirrors how the logs would look when we're not directly updating the message.
     await thread.addSystemMessageToLogs(editMessage);
 
-    const threadMessageWithEdit = threadMessage.clone();
+    const threadMessageWithEdit = structuredClone(threadMessage);
     threadMessageWithEdit.body = newContent;
-    const formatted = threadMessageWithEdit.formatAsUserReply();
+    const formatted = formatMessageAsUserReply(threadMessageWithEdit);
 
     try {
       const channel = await bot.channels.fetch(thread.channel_id);
@@ -495,12 +511,17 @@ async function handleMessageEdit(
     // Only post a system log if the messages are significantly
     // different (Levenshtein distance of more than 2)
     if (threads.levenshteinDistance(oldContent, newContent) > 2)
-      await thread.postSystemMessage(editMessage);
+      await postSystemMessage(db, thread as Thread, editMessage);
   }
 
-  if (threadMessage.isChat()) {
+  if (threadMessage.message_type === ThreadMessageType.Chat) {
     const message = await msg.fetch();
-    thread.updateChatMessageInLogs(message);
+    threadMessages.updateMessageContent(
+      db,
+      thread.id,
+      message.id,
+      message.content,
+    );
   }
 }
 
@@ -511,7 +532,7 @@ async function handleMessageDelete(
   _: Client,
   msg: OmitPartialGroupDMChannel<Message<boolean> | PartialMessage<boolean>>,
 ) {
-  const msgThread = await threads.findByChannelId(db, msg.channelId);
+  const msgThread = await threads.findByChannelID(db, msg.channelId);
   if (!msgThread && msg.channel.type !== ChannelType.DM) return;
 
   const threadMessage = await threads.findThreadMessageByDMMessageId(
@@ -520,10 +541,10 @@ async function handleMessageDelete(
   );
   if (!threadMessage) return;
 
-  const thread = await threads.findById(db, threadMessage.thread_id);
+  const thread = await threads.findThreadByID(db, threadMessage.thread_id);
   if (!thread) return;
 
-  if (thread.isClosed()) {
+  if (thread[0]?.status === ThreadStatus.Closed) {
     return;
   }
 
@@ -545,7 +566,8 @@ async function handleMessageDelete(
   // }
 
   // If the deleted message was staff chatter in the thread channel, also delete it from the logs
-  if (threadMessage.isChat()) thread.deleteChatMessageFromLogs(msg.id);
+  if (threadMessage.message_type === ThreadMessageType.Chat)
+    threadMessages.deleteMessage(db, thread[0]?.id || "", msg.id);
 }
 
 async function handleInteractionCreate(bot: Client, interaction: Interaction) {

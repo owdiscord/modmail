@@ -1,4 +1,4 @@
-import type Thread from "../data/Thread";
+import type { Thread } from "../data/Thread";
 
 interface AfterThreadCloseScheduledHookData {
   thread: Thread;

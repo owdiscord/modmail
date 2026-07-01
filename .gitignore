@@ -10,3 +10,8 @@
 !/config.example.ini
 config.toml
 secrets.toml
+
+# Ignore built JS files.
+dist
+avatars/*
+!avatars/default.png

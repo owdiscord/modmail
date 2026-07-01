@@ -1,8 +1,9 @@
 import { ChannelType, GuildChannel } from "discord.js";
 import type { ModuleProps } from "../plugins";
+import { postSystemMessage } from "../thread";
 import { slugify } from "../utils";
 
-export default ({ bot, config, commands }: ModuleProps) => {
+export default ({ db, bot, config, commands }: ModuleProps) => {
   if (!config.allowMove) return;
 
   commands.addInboxThreadCommand(
@@ -57,7 +58,7 @@ export default ({ bot, config, commands }: ModuleProps) => {
       });
 
       if (containsRankings.length === 0 || containsRankings[0]?.score === 0) {
-        thread.postSystemMessage("No matching category");
+        postSystemMessage(db, thread, "No matching category");
         return;
       }
 
@@ -69,14 +70,20 @@ export default ({ bot, config, commands }: ModuleProps) => {
           lockPermissions: config.syncPermissionsOnMove,
         });
       } catch (e: unknown) {
-        if (e instanceof Error)
-          thread.postSystemMessage(`Failed to move thread: ${e.message}`);
-        else thread.postSystemMessage(`Failed to move thread: ${e}`);
+        postSystemMessage(
+          db,
+          thread,
+          e instanceof Error
+            ? `Failed to move thread: ${e.message}`
+            : `Failed to move thread: ${e}`,
+        );
 
         return;
       }
 
-      thread.postSystemMessage(
+      postSystemMessage(
+        db,
+        thread,
         `⇅ Thread moved to **${targetCategory.name.toUpperCase()}**`,
       );
     },

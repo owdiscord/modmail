@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import type { PermissionFlagsBits, Snowflake } from "discord.js";
 import { parse } from "smol-toml";
 
@@ -13,6 +14,9 @@ interface DatabaseConfig {
 export type ModmailConfig = {
   secrets: {
     token: Snowflake;
+    client_id: string;
+    client_secret: string;
+    redirect_uri: string;
     database: DatabaseConfig;
   };
   mainServers: Array<Snowflake>;
@@ -76,6 +80,9 @@ export type ModmailConfig = {
 const config: ModmailConfig = {
   secrets: {
     token: "not-set",
+    client_id: "not-set",
+    client_secret: "not-set",
+    redirect_uri: "not-set",
     database: {
       host: "localhost",
       port: 3306,
@@ -145,12 +152,21 @@ const config: ModmailConfig = {
 };
 
 async function loadSecrets() {
-  const raw = parse(await Bun.file("secrets.toml").text());
+  const raw = parse(await readFile("secrets.toml", "utf-8"));
 
-  const discord = raw.discord as { token: string };
+  const discord = raw.discord as {
+    token: string;
+    client_id: string;
+    client_secret: string;
+    redirect_uri: string;
+  };
+
   if (discord === undefined || discord.token === undefined)
     throw new Error("Missing required secret: discord.token");
 
+  config.secrets.client_id = discord.client_id || "not-set";
+  config.secrets.client_secret = discord.client_secret || "not-set";
+  config.secrets.redirect_uri = discord.redirect_uri || "not-set";
   config.secrets.token = discord.token;
 
   const db = raw.database as {
@@ -198,7 +214,7 @@ function deepAssign<T>(target: T, source: Partial<T>): void {
 
 async function loadConfig() {
   const raw = parse(
-    await Bun.file("config.toml").text(),
+    await readFile("config.toml", "utf-8"),
   ) as Partial<ModmailConfig>;
 
   // required fields
