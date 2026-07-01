@@ -35,4 +35,4 @@ RUN pnpm install --frozen-lockfile --prod
 COPY --from=builder /app/dist ./
 COPY migrations/ ./migrations
 
-CMD ["node", "index.mjs"]
+CMD ["NODE_ENV=production", "node", "index.mjs"]
