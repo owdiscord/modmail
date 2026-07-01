@@ -8,7 +8,12 @@ export async function getPrettyVersion() {
   async function getPackageVersion() {
     const packageJson = JSON.parse(
       await readFile(
-        path.join(import.meta.dirname, "../package.json"),
+        path.join(
+          import.meta.dirname,
+          process.env.NODE_ENV === "production"
+            ? "package.json"
+            : "../package.json",
+        ),
         "utf-8",
       ),
     );
