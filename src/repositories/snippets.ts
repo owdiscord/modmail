@@ -30,7 +30,7 @@ export async function addSnippet(
 ) {
   if (await getSnippet(sql, trigger)) return;
 
-  return await sql.mutation`INSERT INTO snippets (trigger, body, created_by, created_at) VALUES (${trigger}, ${body}, ${created_by}, now())`;
+  return await sql.mutation`INSERT INTO snippets (\`trigger\`, body, created_by, created_at) VALUES (${trigger}, ${body}, ${created_by}, now())`;
 }
 
 // Delete a given snippet by it's trigger
@@ -41,7 +41,7 @@ export async function deleteSnippet(sql: DbQuery, trigger: string) {
 // Return all snippets
 export async function allSnippets(sql: DbQuery) {
   const snippets =
-    await sql<SnippetRow>`SELECT trigger, body, created_at, created_by FROM snippets`;
+    await sql<SnippetRow>`SELECT \`trigger\`, body, created_at, created_by FROM snippets`;
 
   return snippets || [];
 }
