@@ -146,7 +146,7 @@ export async function suspendThread(
     status = ${ThreadStatus.Suspended},
     scheduled_suspend_id = null,
     scheduled_suspend_name = null,
-    scheduled_suspend_at = null,
+    scheduled_suspend_at = null
   WHERE id = ${thread_id}`;
 }
 
