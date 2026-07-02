@@ -86,7 +86,7 @@ export async function getThreadMessageByNumber(
   thread_id: string,
   message_number: number,
 ): Promise<ThreadMessageRow[]> {
-  return await sql`SELECT * FROM thread_messages WHERE thread_id = ${thread_id} AND message_number = ${message_number} LIMIT `;
+  return await sql`SELECT * FROM thread_messages WHERE thread_id = ${thread_id} AND message_number = ${message_number} LIMIT 1`;
 }
 
 // Update the body content of a thread message by it's internal ID
