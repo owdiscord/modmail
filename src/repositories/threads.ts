@@ -87,7 +87,7 @@ export async function create(
     ${data.log_storage_type},
     '',
     ${typeof data.metadata === "string" ? data.metadata : JSON.stringify(data.metadata)},
-    ${data.roles ? data.roles.join(",") : ""},
+    ${JSON.stringify(data.roles)},
     ${data.server_join},
     ${data.created_at || "now()"},
     false
