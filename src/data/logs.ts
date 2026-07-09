@@ -97,10 +97,10 @@ export const formatLog = async (
       } else if (message.message_type === ThreadMessageType.Chat) {
         line += ` [CHAT] [${registeredName ? registeredName : message.user_name}] ${message.body}`;
         if (
-          message.metadata.attachments &&
+          message.metadata?.attachments &&
           typeof message.metadata.attachments === "object"
         )
-          line += `${message.body.length > 0 && message.metadata.attachments ? "\n" : ""}${(message.metadata.attachments as Array<string>).join("\n")}`;
+          line += `${message.body.length > 0 && message.metadata?.attachments ? "\n" : ""}${(message.metadata.attachments as Array<string>).join("\n")}`;
       } else if (message.message_type === ThreadMessageType.Command) {
         line += ` [COMMAND] [${registeredName ? registeredName : message.user_name}] ${message.body}`;
       } else if (message.message_type === ThreadMessageType.ReplyEdited) {
