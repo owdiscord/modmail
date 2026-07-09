@@ -37,6 +37,8 @@ export const formatLog = async (
 
   const lines = await Promise.all(
     threadMessages.map(async (message) => {
+      if (!message.attachments) message.attachments = [];
+
       // Legacy messages (from 2018) are the entire log in one message, so just serve them as they are
       if (message.message_type === ThreadMessageType.Legacy) {
         return message.body;
@@ -114,7 +116,7 @@ export const formatLog = async (
         line += ` [${message.user_name}] ${message.body}`;
       }
 
-      if (message.attachments.length > 0)
+      if (message.attachments?.length > 0)
         line += `\n\n${message.attachments.join("\n")}`;
 
       return line;
