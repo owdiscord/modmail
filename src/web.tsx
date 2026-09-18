@@ -12,6 +12,7 @@ import { useDb } from "./db";
 import { getMessagesInThread } from "./repositories/threadMessages";
 import { findThreadByID } from "./repositories/threads";
 import { Thread as ThreadView } from "./web/view";
+import { join } from "node:path";
 
 const app = new Hono();
 
@@ -36,7 +37,7 @@ app.get("/style.css", async (_) => {
   const cssFile = await readFile(
     process.env.NODE_ENV !== "PRODUCTION"
       ? "./src/web/style.css"
-      : "./style.css",
+      : join(import.meta.dirname, "../style.css"),
   );
 
   return new Response(cssFile, {
