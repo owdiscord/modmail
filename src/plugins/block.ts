@@ -1,11 +1,11 @@
 import { EmbedBuilder, type Message } from "discord.js";
-import humanizeDuration from "humanize-duration";
 import type { Thread } from "../data/Thread";
 import logger from "../logger";
 import type { ModuleProps } from "../plugins";
 import * as blocked from "../repositories/blocks";
 import { Spacing } from "../style";
 import { getLogChannel } from "../utils";
+import humanizeDuration from "../utils/duration";
 
 export default ({ db, bot, config, commands }: ModuleProps) => {
   if (!config.allowBlock) return;
@@ -74,7 +74,6 @@ export default ({ db, bot, config, commands }: ModuleProps) => {
     if (expiresAt) {
       const humanized = humanizeDuration(expiresAt, {
         largest: 2,
-        round: true,
       });
       msg.channel.send(
         `Blocked <@${userIdToBlock}> (id \`${userIdToBlock}\`) from modmail for ${humanized}`,
@@ -127,7 +126,6 @@ export default ({ db, bot, config, commands }: ModuleProps) => {
     if (unblockAt) {
       const humanized = humanizeDuration(unblockAt, {
         largest: 2,
-        round: true,
       });
       await blocked.updateExpiryTime(db, userIdToUnblock, unblockAt);
       msg.channel.send(

@@ -1,6 +1,4 @@
 import { execSync } from "node:child_process";
-import fs from "node:fs";
-import path from "node:path";
 import { serve } from "@hono/node-server";
 import { version as djsVersion } from "discord.js";
 import { BotError } from "./BotError";

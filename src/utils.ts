@@ -16,7 +16,6 @@ import {
   type Snowflake,
   type TextChannel,
 } from "discord.js";
-import humanizeDuration from "humanize-duration";
 import { publicIp } from "public-ip";
 import { BotError } from "./BotError";
 import bot from "./bot";
@@ -25,6 +24,7 @@ import type { Thread } from "./data/Thread";
 import type { DbQuery } from "./db";
 import logger from "./logger";
 import { postSystemMessage } from "./thread";
+import humanizeDuration from "./utils/duration";
 
 const userMentionRegex = /^<@!?([0-9]+?)>$/;
 

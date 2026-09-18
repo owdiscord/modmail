@@ -7,7 +7,6 @@ import {
   type MessageMentionOptions,
   type TextChannel,
   type User,
-  GuildChannel,
 } from "discord.js";
 import config from "../config";
 import type { DbQuery } from "../db";

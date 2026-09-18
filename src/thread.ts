@@ -22,7 +22,6 @@ import {
   type SendableChannels,
   type User,
 } from "discord.js";
-import humanizeDuration from "humanize-duration";
 import { BotError } from "./BotError";
 import bot from "./bot";
 import config from "./config";
@@ -83,6 +82,7 @@ import {
   getTimestamp,
   messageContentIsWithinMaxLength,
 } from "./utils";
+import humanizeDuration from "./utils/duration";
 
 async function postToThreadChannel(
   db: DbQuery,
@@ -638,7 +638,7 @@ export async function postSystemMessage(
   const msg = await postToThreadChannel(db, thread, message);
 
   threadMessage.inbox_message_id = msg.id;
-  const v = await threadMessages.create(db, threadMessage);
+  const _created = await threadMessages.create(db, threadMessage);
 
   return {
     message: msg,
@@ -1375,7 +1375,6 @@ export async function sendInfoHeader(
   // Build infoHeader text - deprecated at this point, but we keep it in the database for whatever reason.
   const accountAge = humanizeDuration(Date.now() - user.createdAt.getTime(), {
     largest: 2,
-    round: true,
   });
   let infoHeader = [
     `ACCOUNT AGE **${accountAge}**`,
