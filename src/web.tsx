@@ -24,12 +24,12 @@ app.use(
 );
 app.use(
   cors({
-    origin: ["http://localhost:8800", "http://localhost:1234"],
+    origin: ["http://localhost:8800", "http://localhost:1234", "https://modmail.owdiscord.org"],
   }),
 );
 
 app.get("/style.css", async (_) => {
-  const cssFile = await readFile("./src/web/style.css");
+  const cssFile = await readFile(process.env.NODE_ENV !== 'PRODUCTION' ? "./src/web/style.css" : './style.css');
 
   return new Response(cssFile, {
     headers: {
