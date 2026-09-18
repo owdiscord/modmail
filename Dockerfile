@@ -3,8 +3,8 @@
 #
 FROM node:25-alpine AS builder
 
-# Enable and install pnpm using Corepack, the new in-built Node tool.
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Enable and install pnpm
+RUN npm install -g pnpm@11.1.3
 
 WORKDIR /app
 
