@@ -1,7 +1,7 @@
 #
 # --- Build stage ---
 #
-FROM node:24-alpine AS builder
+FROM node:25-alpine AS builder
 
 # Enable and install pnpm using Corepack, the new in-built Node tool.
 RUN corepack enable && corepack prepare pnpm@latest --activate
@@ -20,7 +20,7 @@ RUN pnpm run build
 #
 # --- Runtime stage ----
 #
-FROM node:24-alpine AS runtime
+FROM node:25-alpine AS runtime
 
 # Same as above, use Corepack to enable pnpm.
 RUN corepack enable && corepack prepare pnpm@latest --activate
