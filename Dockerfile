@@ -22,8 +22,8 @@ RUN pnpm run build
 #
 FROM node:25-alpine AS runtime
 
-# Same as above, use Corepack to enable pnpm.
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Same as above, install pnpm.
+RUN npm install -g pnpm@11.1.3
 
 WORKDIR /app
 
