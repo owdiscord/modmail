@@ -9,7 +9,7 @@
 You will need a MySQL 8 database running for the bot to connect to. This is
 most easily done with Docker Compose and the compose.dev.yml file. After that,
 you need to get yourself a copy of NodeJS and pnpm. The project is currently pinned
-to Node version 24.15.0 (check this against package.json and Dockerfile, to be sure).
+to Node version 25.1.2 (check this against package.json and Dockerfile, to be sure).
 Beyond that point, it's a simple `pnpm run dev` to get the bot (including the logs webserver) going.
 
 There are **two** files you need to be aware of - config.toml and secrets.toml - 
