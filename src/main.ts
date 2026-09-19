@@ -26,6 +26,7 @@ import * as blocked from "./repositories/blocks";
 import * as threadMessages from "./repositories/threadMessages";
 import * as threads from "./repositories/threads";
 import {
+  addSystemMessageToLogs,
   closeThread,
   formatMessageAsUserReply,
   postSystemMessage,
@@ -483,7 +484,7 @@ async function handleMessageEdit(
     // When directly updating the message in the staff view, we still want to keep the original content in the logs.
     // To do this, we don't edit the log message at all and instead add a fake system message that includes the edit.
     // This mirrors how the logs would look when we're not directly updating the message.
-    await thread.addSystemMessageToLogs(editMessage);
+    await addSystemMessageToLogs(db, thread.id, editMessage);
 
     const threadMessageWithEdit = structuredClone(threadMessage);
     threadMessageWithEdit.body = newContent;
