@@ -37,7 +37,7 @@ app.get("/style.css", async (_) => {
   const cssFile = await readFile(
     process.env.NODE_ENV !== "PRODUCTION"
       ? "./src/web/style.css"
-      : join(import.meta.dirname, "../style.css"),
+      : join(import.meta.dirname, "style.css"),
   );
 
   return new Response(cssFile, {
