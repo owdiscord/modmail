@@ -11,6 +11,7 @@ import {
 } from "../repositories/displayRoles";
 import { postSystemMessage } from "../thread";
 import { getInboxGuild, isSnowflake } from "../utils";
+import logger from "../logger";
 
 export default ({ db, config, commands }: ModuleProps) => {
   if (!config.allowChangingDisplayRole) {
@@ -28,8 +29,8 @@ export default ({ db, config, commands }: ModuleProps) => {
     await guild.roles.fetch();
     const res = guild.roles.cache.find(
       (r) =>
-        r.name.toLowerCase() === input.toLowerCase() ||
-        r.name.toLowerCase().startsWith(input.toLowerCase()),
+        r.name.toLowerCase().trim() === input.toLowerCase().trim() ||
+        r.name.toLowerCase().trim().startsWith(input.toLowerCase().trim()),
     );
     return res;
   }
@@ -125,7 +126,13 @@ export default ({ db, config, commands }: ModuleProps) => {
   // Get default display role
   commands.addInboxServerCommand("role", [], async (msg, _args, _thread) => {
     const channel = await msg.channel.fetch();
-    if (!msg.member || !channel?.isSendable()) return;
+    if (!msg.member || !channel?.isSendable()) {
+      logger.error(
+        { member: msg.member, isSend: channel.isSendable() },
+        "could not view role",
+      );
+      return;
+    }
 
     const displayRole = await getModeratorDefaultDisplayRoleName(msg.member);
     if (displayRole) {
@@ -141,9 +148,22 @@ export default ({ db, config, commands }: ModuleProps) => {
     [],
     async (msg, _args, _thread) => {
       const channel = await msg.channel.fetch();
-      if (!msg.member || !channel?.isSendable()) return;
+      if (!msg.member || !channel?.isSendable()) {
+        logger.error(
+          { member: msg.member, isSend: channel.isSendable() },
+          "could not reset role in inbox channel",
+        );
+        return;
+      }
 
-      await resetModeratorDefaultRoleOverride(msg.member.id);
+      try {
+        await resetModeratorDefaultRoleOverride(msg.member.id);
+      } catch (e) {
+        logger.error(
+          { db_error: e },
+          "could not run database query to reset default role",
+        );
+      }
 
       const displayRole = await getModeratorDefaultDisplayRoleName(msg.member);
       if (displayRole) {
@@ -168,7 +188,13 @@ export default ({ db, config, commands }: ModuleProps) => {
     async (msg: Message, args: Record<string, unknown>, _thread?: Thread) => {
       const channel = await msg.channel.fetch();
       const role = await resolveRoleInput(args.role as string);
-      if (!role || !msg.member || !channel?.isSendable()) return;
+      if (!role || !msg.member || !channel?.isSendable()) {
+        logger.error(
+          { role, member: msg.member, isSend: channel.isSendable() },
+          "could set role in inbox channel",
+        );
+        return;
+      }
 
       const hasRole = msg.member?.roles.resolve(role.id);
 
