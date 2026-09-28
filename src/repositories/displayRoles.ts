@@ -2,6 +2,7 @@ import type { GuildMember, Role } from "discord.js";
 import config from "../config";
 import { useDb } from "../db";
 import { getMainRole } from "../utils";
+import logger from "../logger";
 
 const db = useDb();
 
@@ -54,7 +55,7 @@ export async function setModeratorThreadRoleOverride(
   if (existingThreadOverride) {
     await db`UPDATE moderator_role_overrides SET role_id = ${role_id} WHERE thread_id = ${thread_id} AND moderator_id = ${moderator_id}`;
   } else {
-    await db`INSERT INTO moderator_role_overrides (thread_id, role_id, moderator_id) VALUES (null, ${role_id}, ${moderator_id})`;
+    await db`INSERT INTO moderator_role_overrides (thread_id, role_id, moderator_id) VALUES (${thread_id}, ${role_id}, ${moderator_id})`;
   }
 }
 
@@ -109,6 +110,9 @@ export async function getModeratorThreadDisplayRoleName(
     moderator,
     thread_id,
   );
+
+  logger.info({ threadDisplayRole, fallback: config.fallbackRoleName });
+
   return threadDisplayRole
     ? threadDisplayRole.name
     : config.fallbackRoleName || null;
