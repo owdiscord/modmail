@@ -67,7 +67,6 @@ export async function create(
     channel_id,
     next_message_number,
     thread_number,
-    alert_ids,
     log_storage_type,
     log_storage_data,
     metadata,
@@ -83,7 +82,6 @@ export async function create(
     ${data.channel_id},
     ${data.next_message_number},
     ${number},
-    ${data.alert_ids},
     ${data.log_storage_type},
     '',
     ${typeof data.metadata === "string" ? data.metadata : JSON.stringify(data.metadata)},
@@ -186,46 +184,6 @@ export async function reOpenThread(
   return sql.mutation`UPDATE threads SET
     status = ${ThreadStatus.Open}
   WHERE id = ${thread_id}`;
-}
-
-// Add a user ID to the alerts list, ensuring we properly concatenate new user IDs.
-// We do this (and all other alert-related stuff) in SQL, which prevents badly formatted data.
-export async function alertUserForThreadReply(
-  sql: DbQuery,
-  thread_id: string,
-  user_id: string,
-) {
-  return sql.mutation`UPDATE threads
-    SET alert_ids = CASE
-      WHEN alert_ids IS NULL THEN ${user_id}
-      WHEN LENGTH(alert_ids) = 0 THEN ${user_id}
-      WHEN FIND_IN_SET(${user_id}, alert_ids) > 0 THEN alert_ids
-      ELSE CONCAT_WS(${","}, alert_ids, ${user_id})
-    END
-    WHERE id = ${thread_id}`;
-}
-
-// Remove a user from the alert list for a thread.
-export async function removeThreadReplyAlert(
-  sql: DbQuery,
-  thread_id: string,
-  user_id: string,
-) {
-  await sql.mutation`
-  UPDATE threads
-  SET alert_ids = NULLIF(
-    TRIM(BOTH ',' FROM
-      REPLACE(CONCAT(',', alert_ids, ','), ${`,${user_id},`}, ',')
-    ),
-    ''
-  )
-  WHERE id = ${thread_id}
-    AND FIND_IN_SET(${user_id}, alert_ids) > 0`;
-}
-
-// Clear all alerts from a thread
-export async function clearThreadAlerts(sql: DbQuery, thread_id: string) {
-  await sql.mutation`UPDATE threads SET alert_ids = null WHERE id = ${thread_id}`;
 }
 
 // Notably, this function *also* impacts thread messages, resetting

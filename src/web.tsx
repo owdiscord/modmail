@@ -34,9 +34,7 @@ app.use(
 
 app.get("/style.css", async (_) => {
   const cssFile = await readFile(
-    process.env.NODE_ENV === "production"
-      ? "style.css"
-      : "./src/web/style.css",
+    process.env.NODE_ENV === "production" ? "style.css" : "./src/web/style.css",
   );
 
   return new Response(cssFile, {

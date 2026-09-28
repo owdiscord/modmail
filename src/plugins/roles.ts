@@ -1,3 +1,4 @@
+import logger from "../logger";
 import type { ModuleProps } from "../plugins";
 import {
   getModeratorDefaultDisplayRoleName,
@@ -9,7 +10,6 @@ import {
 } from "../repositories/displayRoles";
 import { postSystemMessage } from "../thread";
 import { getInboxGuild, isSnowflake } from "../utils";
-import logger from "../logger";
 
 export default ({ db, config, commands }: ModuleProps) => {
   if (!config.allowChangingDisplayRole) {

@@ -47,17 +47,14 @@ import {
 import { allSnippets, type Snippet } from "./repositories/snippets";
 import * as threadMessages from "./repositories/threadMessages";
 import {
-  alertUserForThreadReply,
   cancelScheduledClosure,
   cancelScheduledSuspension,
-  clearThreadAlerts,
   getLastClosedThreadByUser,
   getNextThreadMessageNumber,
   getThreadMessageStats,
   getThreadStaffReplyCounts,
   getUserThreadsClosedCount,
   markThreadClosed,
-  removeThreadReplyAlert,
   reOpenThread,
   type StaffReplyData,
   scheduleThreadClosure,
@@ -83,6 +80,12 @@ import {
   messageContentIsWithinMaxLength,
 } from "./utils";
 import humanizeDuration from "./utils/duration";
+import {
+  addThreadAlert,
+  clearNonStickyThreadAlerts,
+  getThreadAlerts,
+  removeThreadAlert,
+} from "./repositories/alerts";
 
 async function postToThreadChannel(
   db: DbQuery,
@@ -572,18 +575,26 @@ export async function receiveUserReply(
     );
   }
 
-  if (thread.alert_ids && !skipAlert) {
-    const ids = thread.alert_ids.split(",");
-    const mentionsStr = ids.map((id) => `<@!${id}> `).join("");
+  const alertUsers = await getThreadAlerts(db, thread.id);
 
-    await deleteAlerts(db, thread);
+  console.log(alertUsers);
+
+  if (alertUsers.length > 0) {
+    const mentionIDs = alertUsers.map(({ user_id }) => `${user_id}`);
+    const mentionsStr = mentionIDs
+      .map((user_id: string) => `<@!${user_id}>`)
+      .join(" ");
+
+    console.log(mentionsStr);
+
+    await clearNonStickyAlerts(db, thread);
     await postSystemMessage(
       db,
       thread,
       `${Emoji.Alert} ${mentionsStr} New message from ${thread.user_name}`,
       {
         allowedMentions: {
-          users: ids,
+          users: mentionIDs,
         },
       },
     );
@@ -638,7 +649,7 @@ export async function postSystemMessage(
   const msg = await postToThreadChannel(db, thread, message);
 
   threadMessage.inbox_message_id = msg.id;
-  const _created = await threadMessages.create(db, threadMessage);
+  await threadMessages.create(db, threadMessage);
 
   return {
     message: msg,
@@ -977,8 +988,9 @@ export async function addAlert(
   db: DbQuery,
   thread: Thread,
   user_id: string,
+  sticky: boolean,
 ): Promise<void> {
-  await alertUserForThreadReply(db, thread.id, user_id);
+  await addThreadAlert(db, thread.id, user_id, sticky);
 }
 
 export async function removeAlert(
@@ -986,15 +998,11 @@ export async function removeAlert(
   thread: Thread,
   user_id: string,
 ): Promise<void> {
-  await removeThreadReplyAlert(db, thread.id, user_id);
+  await removeThreadAlert(db, thread.id, user_id);
 }
 
-async function deleteAlerts(db: DbQuery, thread: Thread): Promise<void> {
-  logger.info(
-    { thread_id: thread.id, username: thread.user_name },
-    "removing alerts for thread",
-  );
-  clearThreadAlerts(db, thread.id);
+async function clearNonStickyAlerts(db: DbQuery, thread: Thread) {
+  await clearNonStickyThreadAlerts(db, thread.id);
 }
 
 export async function editStaffReply(

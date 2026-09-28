@@ -50,7 +50,6 @@ export type ThreadProps = {
   scheduled_suspend_at?: Date;
   scheduled_suspend_id?: string;
   scheduled_suspend_name?: string;
-  alert_ids: string;
   log_storage_type: string;
   log_storage_data: Record<string, unknown> | string;
   created_at?: Date;
@@ -74,7 +73,6 @@ export type Thread = {
   scheduled_suspend_at: Date | null;
   scheduled_suspend_id: string | null;
   scheduled_suspend_name: string | null;
-  alert_ids: string;
   log_storage_type: string;
   log_storage_data:
     | {
@@ -283,7 +281,6 @@ export async function createNewThreadForUser(
       next_message_number: 1,
       created_at: new Date(),
       thread_number: 0,
-      alert_ids: "",
       log_storage_type: "local",
       log_storage_data: {},
       metadata: {},
