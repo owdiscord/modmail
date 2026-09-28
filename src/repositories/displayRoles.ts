@@ -2,7 +2,6 @@ import type { GuildMember, Role } from "discord.js";
 import config from "../config";
 import { useDb } from "../db";
 import { getMainRole } from "../utils";
-import logger from "../logger";
 
 const db = useDb();
 
@@ -11,8 +10,6 @@ export async function getModeratorDefaultRoleOverride(
 ): Promise<string | null> {
   const roleOverride =
     await db`SELECT role_id FROM moderator_role_overrides WHERE thread_id IS NULL AND moderator_id = ${moderatorId} LIMIT 1`;
-
-  console.log(roleOverride);
 
   return roleOverride[0]?.role_id || null;
 }

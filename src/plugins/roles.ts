@@ -84,7 +84,7 @@ export default ({ db, config, commands }: ModuleProps) => {
   );
 
   // Reset display role for a thread
-  commands.addInboxThreadCommand(
+  commands.addInboxServerCommand(
     "role reset",
     [],
     async (msg, _args, thread) => {
@@ -150,7 +150,7 @@ export default ({ db, config, commands }: ModuleProps) => {
   );
 
   // Set display role for a thread
-  commands.addInboxThreadCommand(
+  commands.addInboxServerCommand(
     "role",
     "<role:string$>",
     async (msg, args, thread) => {
