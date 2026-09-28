@@ -183,8 +183,6 @@ export async function replyToUser(
     thread.id,
   );
 
-  logger.info({ roleName, thread_id: thread.id }, "testing role getting");
-
   const userMessageReference: ReplyOptions = {
     messageReference: "",
     failIfNotExists: true,

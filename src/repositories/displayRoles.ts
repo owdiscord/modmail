@@ -12,6 +12,8 @@ export async function getModeratorDefaultRoleOverride(
   const roleOverride =
     await db`SELECT role_id FROM moderator_role_overrides WHERE thread_id IS NULL AND moderator_id = ${moderatorId} LIMIT 1`;
 
+  console.log(roleOverride);
+
   return roleOverride[0]?.role_id || null;
 }
 
@@ -110,8 +112,6 @@ export async function getModeratorThreadDisplayRoleName(
     moderator,
     thread_id,
   );
-
-  logger.info({ threadDisplayRole, fallback: config.fallbackRoleName });
 
   return threadDisplayRole
     ? threadDisplayRole.name
