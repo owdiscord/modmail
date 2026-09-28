@@ -577,15 +577,11 @@ export async function receiveUserReply(
 
   const alertUsers = await getThreadAlerts(db, thread.id);
 
-  console.log(alertUsers);
-
   if (alertUsers.length > 0) {
     const mentionIDs = alertUsers.map(({ user_id }) => `${user_id}`);
     const mentionsStr = mentionIDs
       .map((user_id: string) => `<@!${user_id}>`)
       .join(" ");
-
-    console.log(mentionsStr);
 
     await clearNonStickyAlerts(db, thread);
     await postSystemMessage(
