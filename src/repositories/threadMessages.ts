@@ -163,6 +163,6 @@ export async function getLastIncomingMessageTime(
   id: string,
 ): Promise<number> {
   const query =
-    await sql`SELECT TIMESTAMPDIFF(SECOND, created_at, NOW()) diff FROM thread_messages WHERE thread_id = ${id} AND message_type = ${ThreadMessageType.FromUser} ORDER BY created_at DESC LIMIT 1`;
+    await sql`SELECT TIMESTAMPDIFF(SECOND, created_at, NOW()) diff FROM thread_messages WHERE thread_id = ${id} AND message_type = ${ThreadMessageType.FromUser} ORDER BY created_at DESC LIMIT 1 OFFSET 1`;
   return (query[0] && query[0]?.diff) || 0;
 }
