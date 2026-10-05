@@ -157,3 +157,12 @@ export async function update(sql: DbQuery, id: number, updated: ThreadMessage) {
     body = ${updated.body},
 ) WHERE id = ${id}`;
 }
+
+export async function getLastIncomingMessageTime(
+  sql: DbQuery,
+  id: string,
+): Promise<number> {
+  const query =
+    await sql`SELECT TIMESTAMPDIFF(SECOND, created_at, NOW()) diff FROM thread_messages WHERE thread_id = ${id} AND message_type = ${ThreadMessageType.FromUser} ORDER BY created_at DESC LIMIT 1`;
+  return (query[0] && query[0]?.diff) || 0;
+}

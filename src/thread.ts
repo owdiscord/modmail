@@ -575,6 +575,16 @@ export async function receiveUserReply(
     );
   }
 
+  // Get the seconds between now and when the last message was sent, which we
+  // can short-circuit on rather than sending an alert if it's been within 30 seconds
+  const sinceLastMessage = await threadMessages.getLastIncomingMessageTime(
+    db,
+    thread.id,
+  );
+  if (sinceLastMessage < 30) {
+    return;
+  }
+
   const alertUsers = await getThreadAlerts(db, thread.id);
 
   if (alertUsers.length > 0) {
