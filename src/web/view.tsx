@@ -78,7 +78,7 @@ const Layout: FC = (props) => {
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link href="/style.css" rel="stylesheet" />
+        <link href="/logs/style.css" rel="stylesheet" />
         <title>{props.title}</title>
       </head>
       <body>{props.children}</body>
