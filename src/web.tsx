@@ -96,7 +96,7 @@ app.get("/privacy-policy", (c) => {
           <li>User IDs tied to snippets are stored until the snippet is deleted</li>
         </ul>
 
-        <h2>Data access and deleition requests</h2>
+        <h2>Data access and deletion requests</h2>
         <p>To request access to your data or for your data to be deleted, please contact any member of the <a href="https://owdiscord.com/invite">Overwatch Server</a> Admin team, either via direct message or by messaging the ModMail instance. Alternatively, you can email the maintainer by reversing "caasi", followed by "@grphcrtv.com". This has been obscured to prevent botting; not to discourage regular contact.</p>
         <p style="font-size:.9rem"><em>Last updated 2026-01-06</em></p>
       </article>
