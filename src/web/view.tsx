@@ -79,6 +79,7 @@ const Layout: FC = (props) => {
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link href="/logs/style.css" rel="stylesheet" />
+        <link rel="icon" href="/static/modmail-dyn.svg" type="image/svg+xml" />
         <title>{props.title}</title>
       </head>
       <body>{props.children}</body>
@@ -98,14 +99,14 @@ export const Thread: FC<{
       </Layout>
     );
 
-  const data = extractData(messages[0]?.body || "");
+  // const data = extractData(messages[0]?.body || "");
   const collapsedMessages = collapseThreadMessages(messages.splice(1));
 
   return (
-    <Layout title={`Modmail thread with ${thread.user_name}`}>
+    <Layout title={`Thread with ${thread.user_name}`}>
       <header class="thread-header">
         <img
-          src="https://cdn.discordapp.com/avatars/255432387993796618/5c947997c70c1d3db8b9950db924a25a.png?size=256"
+          src="/static/modmail.svg"
           alt="Modmail Icon"
           width="80px"
         />
@@ -120,29 +121,30 @@ export const Thread: FC<{
             hour: "2-digit",
             minute: "2-digit",
           })}
-          . When the thread was opened, the user had opened{" "}
-          <b>
-            {data.previous_threads
-              ? `${data.previous_threads} thread${data.previous_threads === 1 ? "" : "s"}`
-              : "no"}
-          </b>{" "}
-          before, and their account was created <b>{data.account_age}</b> ago.
+          . When the thread was opened, the user {" "}
+          {/* <b> */}
+          {/*   {data.previous_threads */}
+          {/*     ? `had opened ${data.previous_threads} thread${data.previous_threads === 1 ? "" : "s"}` */}
+          {/*     : "hadn't contacted ModMail"} */}
+          {/* </b>{" "} */}
+          {/* before, and their account was created <b>{data.account_age}</b> ago. */}
         </p>
-        {data.servers.map((server) => (
-          <div class="server">
-            <h5 class="server-name">
-              {server.name}{" "}
-              <span class="server-known-as">(as {server.nickname})</span>
-            </h5>
-            <ul class="server-roles">
-              {server.roles.map((role) => (
-                <li class="msg-row" data-role={role.toLowerCase()}>
-                  {role}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
+        {/* {JSON.stringify(data.servers)} */}
+        {/* {data.servers.map((server) => ( */}
+        {/*   <div class="server"> */}
+        {/*     <h5 class="server-name"> */}
+        {/*       {server.name}{" "} */}
+        {/*       <span class="server-known-as">(as {server.nickname})</span> */}
+        {/*     </h5> */}
+        {/*     <ul class="server-roles"> */}
+        {/*       {server.roles.map((role) => ( */}
+        {/*         <li class="msg-row" data-role={role.toLowerCase()}> */}
+        {/*           {role} */}
+        {/*         </li> */}
+        {/*       ))} */}
+        {/*     </ul> */}
+        {/*   </div> */}
+        {/* ))} */}
       </header>
       <main class="thread">
         {/* <pre>{JSON.stringify(thread, null, 2)}</pre> */}
@@ -171,11 +173,13 @@ export const Thread: FC<{
 };
 
 const UserMessage: FC<{ msg: CollapsedThreadMessage }> = async ({ msg }) => {
+  const body = (await Promise.all(msg.bodies.map(convertMarkdown))).join('')
+
   return (
     <li class="msg-row" data-message-type="from-user">
       <figure
         class="msg-avatar"
-        style="background-image: url('https://cdn.discordapp.com/avatars/255432387993796618/5c947997c70c1d3db8b9950db924a25a.png?size=256')"
+        style="background-image: url('/static/modmail.svg')"
       ></figure>
       <div class="msg-content">
         <div class="msg-header">
@@ -187,11 +191,7 @@ const UserMessage: FC<{ msg: CollapsedThreadMessage }> = async ({ msg }) => {
           <time>{msg.created_at.toLocaleString()}</time>
         </div>
         <div class="msg-body">
-          {msg.bodies.map(async (body) => (
-            <article
-              dangerouslySetInnerHTML={{ __html: await convertMarkdown(body) }}
-            ></article>
-          ))}
+          <article dangerouslySetInnerHTML={{ __html: body }} />
           {msg.metadata.embeds && (
             <Embeds embeds={msg.metadata.embeds as Array<Embed>} />
           )}
@@ -329,6 +329,8 @@ const InternalMessage: FC<{ msg: CollapsedThreadMessage }> = async ({
   const displayName =
     (await getRegisteredUsername(db, msg.user_id)) || msg.user_name;
 
+  const body = (await Promise.all(msg.bodies.map(convertMarkdown))).join('')
+
   return (
     <li class="msg-row" data-message-type="internal">
       <figure
@@ -345,11 +347,7 @@ const InternalMessage: FC<{ msg: CollapsedThreadMessage }> = async ({
           <time>{msg.created_at.toLocaleString()}</time>
         </div>
         <div class="msg-body">
-          {msg.bodies.map(async (body) => (
-            <article
-              dangerouslySetInnerHTML={{ __html: await convertMarkdown(body) }}
-            ></article>
-          ))}
+          <article dangerouslySetInnerHTML={{ __html: body }} />
         </div>
       </div>
     </li>
