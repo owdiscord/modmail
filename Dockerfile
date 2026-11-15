@@ -33,8 +33,8 @@ RUN pnpm install --frozen-lockfile --prod
 
 # Bring in the compiled JS output and migrations
 COPY --from=builder /app/dist ./
-COPY --from=builder /app/static ./static
 COPY --from=builder /app/src/web/style.css ./style.css
+COPY static/ ./static
 COPY migrations/ ./migrations
 
 ENV NODE_ENV=production
