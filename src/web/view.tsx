@@ -16,7 +16,7 @@ const Layout: FC = (props) => {
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link href="/logs/style.css" rel="stylesheet" />
+        <link href="/logs/style.css?v=1794738152" rel="stylesheet" />
         <link rel="icon" href="/static/modmail-dyn.svg" type="image/svg+xml" />
         <title>{props.title}</title>
       </head>
@@ -208,7 +208,7 @@ const MessageRow: FC<{ msg: CollapsedThreadMessage }> = async ({ msg }) => {
           :
           <div class="msg-header" data-role={msg.role_name.toLowerCase()}>
             <p data-tooltip={msg.user_id}>
-              {msg.user_name}
+              {hasAvatar ? getRegisteredUsername(db, msg.user_id) : msg.user_name}
               <Icon />
               <span class="typeBadge">{messageType(msg.message_type)}</span>
             </p>
