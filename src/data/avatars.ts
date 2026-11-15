@@ -13,7 +13,10 @@ export async function downloadBasicAvatar(
   if (!resp.ok || !resp.body)
     throw `Failed to fetch avatar for ${snowflake}: ${resp.status} ${resp.statusText}`;
 
-  const dest = join(import.meta.dirname, "../../avatars", `${snowflake}.png`);
+  const dest =
+    process.env.NODE_ENV === "production"
+      ? `./avatars/${snowflake}.png`
+      : join(import.meta.dirname, "../../avatars", `${snowflake}.png`);
 
   // delete file if it already exists
   await unlink(dest).catch(() => {});
