@@ -218,13 +218,13 @@ h6 {
   }
 }
 
-[data-role="modeartor"],
-[data-role="mod"] {
+[data-role-colour="modeartor"],
+[data-role-colour="mod"] {
   --user-color: var(--color-mod);
 }
 
-[data-role="administrator"],
-[data-role="admin"] {
+[data-role-colour="administrator"],
+[data-role-colour="admin"] {
   --user-color: var(--color-admin);
 }
 

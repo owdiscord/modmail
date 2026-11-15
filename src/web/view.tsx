@@ -16,7 +16,7 @@ const Layout: FC = (props) => {
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link href="/logs/style.css?v=1794740172" rel="stylesheet" />
+        <link href="/logs/style.css?v=1794740492" rel="stylesheet" />
         <link rel="icon" href="/static/modmail-dyn.svg" type="image/svg+xml" />
         <title>{props.title}</title>
       </head>
@@ -76,7 +76,7 @@ export const Thread: FC<{
             minute: "2-digit",
           })}</b>.
         </p>
-        <ul class="roles">{roles.map((role: string) => <li class="role" data-role={role.toLowerCase().replace(/\s/g, '-')}>{role}</li>)}</ul>
+        <ul class="roles">{roles.map((role: string) => <li class="role" data-role-colour={role.toLowerCase().replace(/\s/g, '-')}>{role}</li>)}</ul>
       </header>
 
       <main class="thread hide-commands">
@@ -206,7 +206,7 @@ const MessageRow: FC<{ msg: CollapsedThreadMessage }> = async ({ msg }) => {
             <time>{msg.created_at.toLocaleString()}</time>
           </div>
           :
-          <div class="msg-header" data-role={msg.role_name.toLowerCase()}>
+          <div class="msg-header" data-role-colour={msg.role_name.toLowerCase()}>
             <p data-tooltip={msg.user_id}>
               {hasAvatar ? getRegisteredUsername(db, msg.user_id) : msg.user_name}
               <Icon />
