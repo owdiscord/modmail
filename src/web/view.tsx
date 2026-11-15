@@ -86,7 +86,7 @@ export const Thread: FC<{
 
       <footer class="thread-footer">
         {thread.status === ThreadStatus.Closed &&
-          <p>This thread is <b>closed</b>. It was closed at <time>{thread.closed_at?.toLocaleString("en-US", {
+          <p>This thread is <b>closed</b>. It was closed <time>{thread.closed_at?.toLocaleString("en-US", {
             year: "numeric",
             month: "long",
             day: "numeric",
@@ -205,7 +205,7 @@ const MessageRow: FC<{ msg: CollapsedThreadMessage }> = async ({ msg }) => {
             <time>{msg.created_at.toLocaleString()}</time>
           </div>
           :
-          <div class="msg-header" data-role-colour={msg.role_name.toLowerCase()}>
+          <div class="msg-header" data-role-colour={msg.message_type === ThreadMessageType.Chat ? 'moderator' : msg.role_name.toLowerCase()}>
             <p data-tooltip={msg.user_id}>
               {hasAvatar ? getRegisteredUsername(db, msg.user_id) : msg.user_name}
               <Icon />
