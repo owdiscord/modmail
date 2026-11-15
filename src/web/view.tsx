@@ -37,8 +37,7 @@ export const Thread: FC<{
       </Layout>
     );
 
-  // const data = extractData(messages[0]?.body || "");
-  const collapsedMessages = collapseThreadMessages(messages.splice(1));
+  const collapsedMessages = collapseThreadMessages(messages);
 
   // @ts-ignore support legacy role storage
   const roles = (thread.roles === 'string' ? thread.roles.split(',') : thread.roles).filter(r => r !== '@everyone')
