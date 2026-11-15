@@ -218,14 +218,14 @@ h6 {
   }
 }
 
-.msg-header[data-role="modeartor"] p,
-.msg-header[data-role="mod"] p {
-  color: var(--color-mod);
+[data-role="modeartor"],
+[data-role="mod"] {
+  --user-color: var(--color-mod);
 }
 
-.msg-header[data-role="administrator"] p,
-.msg-header[data-role="admin"] p {
-  color: var(--color-admin);
+[data-role="administrator"],
+[data-role="admin"] {
+  --user-color: var(--color-admin);
 }
 
 .msg-body {
