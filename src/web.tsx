@@ -15,6 +15,7 @@ import { Thread as ThreadView } from "./web/view";
 import { createReadStream, statSync } from 'node:fs'
 import { Readable } from 'node:stream'
 import path from "node:path";
+import { serveStatic } from "@hono/node-server/serve-static";
 
 const app = new Hono();
 
@@ -152,7 +153,7 @@ app.get("/avatar/:snowflake", (c) => {
   const param = c.req.param().snowflake as string
   const snowflake = param.endsWith('.png') ? param.substring(0, param.length - 4) : param
   try {
-    const filePath = process.env.NODE_ENV === "production" ? path.join(import.meta.dirname, `/avatars/${snowflake}.png`) : path.join(import.meta.dirname, `../avatars/${snowflake}.png`)
+    const filePath = process.env.NODE_ENV === "production" ? `avatars/${snowflake}.png` : path.join(import.meta.dirname, `../avatars/${snowflake}.png`)
     const stat = statSync(filePath)
     const nodeStream = createReadStream(filePath)
 
@@ -191,6 +192,19 @@ app.get("/attachments/:id/:filename", async (c) => {
     return c.notFound();
   }
 });
+
+const staticPath =
+  process.env.NODE_ENV === "production"
+    ? "static"
+    : path.join(import.meta.dirname, "../", "static");
+
+app.use(
+  "/static/*",
+  serveStatic({
+    root: staticPath,
+    rewriteRequestPath: (path) => path.replace(/^\/static/, "/"),
+  }),
+);
 
 export default {
   ...app,
