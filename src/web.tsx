@@ -152,7 +152,7 @@ app.get("/avatar/:snowflake", (c) => {
   const param = c.req.param().snowflake as string
   const snowflake = param.endsWith('.png') ? param.substring(0, param.length - 4) : param
   try {
-    const filePath = path.join(import.meta.dirname, `../avatars/${snowflake}.png`)
+    const filePath = process.env.NODE_ENV === "production" ? path.join(import.meta.dirname, `/avatars/${snowflake}.png`) : path.join(import.meta.dirname, `../avatars/${snowflake}.png`)
     const stat = statSync(filePath)
     const nodeStream = createReadStream(filePath)
 

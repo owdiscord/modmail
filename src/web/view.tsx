@@ -16,7 +16,7 @@ const Layout: FC = (props) => {
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link href="/logs/style.css?v=1794738152" rel="stylesheet" />
+        <link href="/logs/style.css?v=1794738643" rel="stylesheet" />
         <link rel="icon" href="/static/modmail-dyn.svg" type="image/svg+xml" />
         <title>{props.title}</title>
       </head>
