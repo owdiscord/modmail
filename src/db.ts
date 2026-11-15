@@ -149,9 +149,7 @@ export function useDb(): DbQuery {
     typeCast(field, next) {
       if (
         field.table === "thread_messages" &&
-        (field.name === "attachments" ||
-          field.name === "small_attachments" ||
-          field.name === "roles")
+        (field.name === "attachments" || field.name === "small_attachments")
       )
         return JSON.parse(field.string() || "[]") || null;
       if (
@@ -159,6 +157,9 @@ export function useDb(): DbQuery {
         field.name === "metadata"
       )
         return JSON.parse(field.string() || "{}") || {};
+
+      if (field.table === "threads" && field.name === "roles")
+        return JSON.parse(field.string() || "[]") || [];
 
       return next();
     },
