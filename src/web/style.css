@@ -197,6 +197,16 @@ h6 {
     margin: 0 0 0.3rem;
   }
 
+  &[data-role="modeartor"] p,
+  &[data-role="mod"] p {
+    color: var(--color-mod);
+  }
+
+  &[data-role="administrator"] p,
+  &[data-role="admin"] p {
+    color: var(--color-admin);
+  }
+
   & time {
     font-size: 0.8rem;
     color: var(--color-gray-300);

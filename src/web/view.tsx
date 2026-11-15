@@ -16,7 +16,7 @@ const Layout: FC = (props) => {
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link href="/logs/style.css?v=1794738643" rel="stylesheet" />
+        <link href="/logs/style.css?v=1794739640" rel="stylesheet" />
         <link rel="icon" href="/static/modmail-dyn.svg" type="image/svg+xml" />
         <title>{props.title}</title>
       </head>
@@ -41,7 +41,7 @@ export const Thread: FC<{
   const collapsedMessages = collapseThreadMessages(messages.splice(1));
 
   // @ts-ignore support legacy role storage
-  const roles = (typeof thread.roles === 'string' ? thread.roles.split(',') : thread.roles).filter(r => r !== '@everyone')
+  const roles = (thread.roles === 'string' ? thread.roles.split(',') : thread.roles).filter(r => r !== '@everyone')
   const threadNumber = await getUserThreadsClosedCount(db, thread.user_id, thread.created_at)
 
   return (
