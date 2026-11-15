@@ -81,6 +81,7 @@ export type Thread = {
       }
     | string;
   created_at: Date;
+  closed_at?: Date;
   metadata: Record<string, unknown>;
   roles: Array<string>;
   server_join: Date;

@@ -1,11 +1,12 @@
 import type { Embed } from "discord.js";
 import type { FC } from "hono/jsx";
-import { ThreadMessageType } from "../data/constants";
+import { ThreadMessageType, ThreadStatus } from "../data/constants";
 import type { Thread as DBThread } from "../data/Thread";
 import type { ThreadMessage as DBThreadMessage } from "../data/ThreadMessage";
 import { useDb } from "../db";
 import { getRegisteredUsername } from "../repositories/registration";
 import { convertMarkdown } from "./markdown";
+import { getUserThreadsClosedCount } from "../repositories/threads";
 
 const db = useDb();
 
@@ -39,6 +40,10 @@ export const Thread: FC<{
   // const data = extractData(messages[0]?.body || "");
   const collapsedMessages = collapseThreadMessages(messages.splice(1));
 
+  // @ts-ignore support legacy role storage
+  const roles = (typeof thread.roles === 'string' ? thread.roles.split(',') : thread.roles).filter(r => r !== '@everyone')
+  const threadNumber = await getUserThreadsClosedCount(db, thread.user_id, thread.created_at)
+
   return (
     <Layout title={`Thread with ${thread.user_name}`}>
       <header class="thread-header">
@@ -48,7 +53,6 @@ export const Thread: FC<{
           width="80px"
         />
         <h1>Thread with {thread.user_name}</h1>
-        {/*  TODO: Format creation */}
         <p>
           Thread opened{" "}
           {thread.created_at.toLocaleString("en-US", {
@@ -59,82 +63,48 @@ export const Thread: FC<{
             minute: "2-digit",
           })}
           . When the thread was opened, the user {" "}
-          {/* <b> */}
-          {/*   {data.previous_threads */}
-          {/*     ? `had opened ${data.previous_threads} thread${data.previous_threads === 1 ? "" : "s"}` */}
-          {/*     : "hadn't contacted ModMail"} */}
-          {/* </b>{" "} */}
-          {/* before, and their account was created <b>{data.account_age}</b> ago. */}
+          <b>
+            {threadNumber
+              ? `had opened ${threadNumber} thread${threadNumber === 1 ? "" : "s"}`
+              : "hadn't contacted ModMail"}
+          </b>{" "}
+          before, and they joined the server <b>{thread.server_join.toLocaleString("en-US", {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          })}</b>.
         </p>
-        {/* {JSON.stringify(data.servers)} */}
-        {/* {data.servers.map((server) => ( */}
-        {/*   <div class="server"> */}
-        {/*     <h5 class="server-name"> */}
-        {/*       {server.name}{" "} */}
-        {/*       <span class="server-known-as">(as {server.nickname})</span> */}
-        {/*     </h5> */}
-        {/*     <ul class="server-roles"> */}
-        {/*       {server.roles.map((role) => ( */}
-        {/*         <li class="msg-row" data-role={role.toLowerCase()}> */}
-        {/*           {role} */}
-        {/*         </li> */}
-        {/*       ))} */}
-        {/*     </ul> */}
-        {/*   </div> */}
-        {/* ))} */}
+        <ul class="roles">{roles.map((role: string) => <li class="role" data-role={role.toLowerCase().replace(/\s/g, '-')}>{role}</li>)}</ul>
       </header>
-      <main class="thread">
-        {/* <pre>{JSON.stringify(thread, null, 2)}</pre> */}
+
+      <main class="thread hide-commands">
         <ul class="thread-messages">
-          {collapsedMessages.map((msg) => {
-            switch (msg.message_type) {
-              case ThreadMessageType.System | ThreadMessageType.SystemToUser:
-                return <SystemMessage msg={msg} />;
-              case ThreadMessageType.FromUser:
-                return <UserMessage msg={msg} />;
-              case ThreadMessageType.ToUser:
-                return <OutgoingMessage msg={msg} />;
-              case ThreadMessageType.Chat:
-                return <InternalMessage msg={msg} />;
-              default:
-                return null;
-                {
-                  /* return <pre>{JSON.stringify(msg, null, 2)}</pre> */
-                }
-            }
-          })}
+          {collapsedMessages.map((msg) => <MessageRow msg={msg} />)}
         </ul>
       </main>
-    </Layout>
-  );
-};
 
-const UserMessage: FC<{ msg: CollapsedThreadMessage }> = async ({ msg }) => {
-  const body = (await Promise.all(msg.bodies.map((body) => convertMarkdown(db, body)))).join('')
+      <footer class="thread-footer">
+        {thread.status === ThreadStatus.Closed &&
+          <p>This thread is <b>closed</b>. It was closed at <time>{thread.closed_at?.toLocaleString("en-US", {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          })}</time></p>
+        }
 
-  return (
-    <li class="msg-row" data-message-type="from-user">
-      <figure
-        class="msg-avatar"
-        style="background-image: url('/static/modmail.svg')"
-      ></figure>
-      <div class="msg-content">
-        <div class="msg-header">
-          <p data-tooltip={msg.user_id}>
-            {msg.user_name}
-            <UserIcon />
-            <span class="typeBadge">{messageType(msg.message_type)}</span>
-          </p>
-          <time>{msg.created_at.toLocaleString()}</time>
-        </div>
-        <div class="msg-body">
-          <article dangerouslySetInnerHTML={{ __html: body }} />
-          {msg.metadata.embeds && (
-            <Embeds embeds={msg.metadata.embeds as Array<Embed>} />
-          )}
-        </div>
-      </div>
-    </li>
+        {thread.status === ThreadStatus.Suspended &&
+          <p>This thread is <b>suspended</b>. Further user-replies will open a new thread.</p>
+        }
+
+        {thread.status === ThreadStatus.Open &&
+          <p>This thread is <b>open.</b></p>
+        }
+      </footer>
+    </Layout >
   );
 };
 
@@ -173,95 +143,81 @@ const Embeds: FC<{ embeds: Array<Embed> }> = ({ embeds }) => {
   );
 };
 
-const OutgoingMessage: FC<{ msg: CollapsedThreadMessage }> = async ({
-  msg,
-}) => {
-  const displayName =
-    (await getRegisteredUsername(db, msg.user_id)) || msg.user_name;
+const MessageRow: FC<{ msg: CollapsedThreadMessage }> = async ({ msg }) => {
+  const body = (await Promise.all(msg.bodies.map((body) => convertMarkdown(db, body)))).join('')
+  const isSystem = msg.message_type === ThreadMessageType.System || msg.message_type === ThreadMessageType.SystemToUser
+  const hasAvatar = msg.message_type === ThreadMessageType.Chat || msg.message_type === ThreadMessageType.ToUser || msg.message_type === ThreadMessageType.Command
+  const kind = (() => {
+    switch (msg.message_type) {
+      case ThreadMessageType.System:
+        return "system";
+      case ThreadMessageType.Chat:
+        return "internal";
+      case ThreadMessageType.FromUser:
+        return "from-user";
+      case ThreadMessageType.ToUser:
+        return "to-user";
+      case ThreadMessageType.Legacy:
+        return "legacy";
+      case ThreadMessageType.Command:
+        return "command";
+      case ThreadMessageType.SystemToUser:
+        return "system-to-user";
+      case ThreadMessageType.ReplyEdited:
+        return "reply-edited";
+      case ThreadMessageType.ReplyDeleted:
+        return "reply-deleted";
+    }
+  })()
+  const Icon = (() => {
+    switch (msg.message_type) {
+      case ThreadMessageType.System:
+      case ThreadMessageType.SystemToUser:
+      case ThreadMessageType.ReplyEdited:
+      case ThreadMessageType.ReplyDeleted:
+        return MailIcon;
+      case ThreadMessageType.Legacy:
+      case ThreadMessageType.Chat:
+      case ThreadMessageType.Command:
+      case ThreadMessageType.ToUser:
+        return ShieldIcon;
+      case ThreadMessageType.FromUser:
+        return UserIcon;
+    }
+  })()
 
-  return (
-    <li class="msg-row" data-message-type="from-user">
-      <figure
-        class="msg-avatar"
-        style={`background-image: url('/avatar/${msg.user_id}.png')`}
-      ></figure>
-      <div class="msg-content">
-        <div class="msg-header">
-          <p data-tooltip={msg.user_id} data-role={msg.role_name.toLowerCase()}>
-            {displayName}
-            <ShieldIcon />
-            <span class="typeBadge">{messageType(msg.message_type)}</span>
-          </p>
-          <time>{msg.created_at.toLocaleString()}</time>
-        </div>
-        <div class="msg-body">
-          {msg.bodies.map((body) => (
-            <p>{body}</p>
-          ))}
-        </div>
-      </div>
-    </li>
-  );
-};
-
-const SystemMessage: FC<{ msg: CollapsedThreadMessage }> = ({ msg }) => {
   return (
     <li
       class="msg-row"
-      data-message-type={
-        msg.message_type === ThreadMessageType.System
-          ? "system"
-          : "system-to-user"
-      }
+      data-message-type={kind}
     >
       <figure
         class="msg-avatar"
-        style="background-image: url('/static/modmail.svg')"
-      ></figure>
+        style={{ backgroundImage: hasAvatar ? `url(/avatar/${msg.user_id}.png)` : `url('/static/modmail.svg')` }}
+      />
       <div class="msg-content">
-        <div class="msg-header">
-          <p data-tooltip={msg.user_id}>
-            Overwatch ModMail
-            <MailIcon />
-            <span class="typeBadge">{messageType(msg.message_type)}</span>
-          </p>
-          <time>{msg.created_at.toLocaleString()}</time>
-        </div>
-        <div class="msg-body">
-          {msg.bodies.map((body) => (
-            <p>{body}</p>
-          ))}
-        </div>
-      </div>
-    </li>
-  );
-};
-
-const InternalMessage: FC<{ msg: CollapsedThreadMessage }> = async ({
-  msg,
-}) => {
-  const displayName =
-    (await getRegisteredUsername(db, msg.user_id)) || msg.user_name;
-
-  const body = (await Promise.all(msg.bodies.map((body) => convertMarkdown(db, body)))).join('')
-
-  return (
-    <li class="msg-row" data-message-type="internal">
-      <figure
-        class="msg-avatar"
-        style={`background-image: url('/avatar/${msg.user_id}.png')`}
-      ></figure>
-      <div class="msg-content">
-        <div class="msg-header">
-          <p data-tooltip={msg.user_id}>
-            {displayName}
-            <ShieldIcon />
-            <span class="typeBadge">{messageType(msg.message_type)}</span>
-          </p>
-          <time>{msg.created_at.toLocaleString()}</time>
-        </div>
+        {isSystem ?
+          <div class="msg-header">
+            <p data-tooltip={msg.user_id}>
+              Overwatch ModMail
+              <MailIcon />
+              <span class="typeBadge">{messageType(msg.message_type)}</span>
+            </p>
+            <time>{msg.created_at.toLocaleString()}</time>
+          </div>
+          :
+          <div class="msg-header" data-role={msg.role_name.toLowerCase()}>
+            <p data-tooltip={msg.user_id}>
+              {msg.user_name}
+              <Icon />
+              <span class="typeBadge">{messageType(msg.message_type)}</span>
+            </p>
+            <time>{msg.created_at.toLocaleString()}</time>
+          </div>
+        }
         <div class="msg-body">
           <article dangerouslySetInnerHTML={{ __html: body }} />
+          <Embeds embeds={msg.metadata.embeds as Embed[] || []} />
         </div>
       </div>
     </li>
@@ -332,70 +288,6 @@ const MailIcon: FC = (_props) => {
       <path d="M18.2559 4C18.3522 4 18.4402 4.03418 18.5079 4.0906C18.5047 4.10577 18.4964 4.12039 18.4821 4.13217L10.1215 11.0088C10.0926 11.0325 10.0502 11.0326 10.0213 11.0088L1.66068 4.13217C1.64638 4.12039 1.63807 4.10577 1.63484 4.0906C1.70257 4.03416 1.79064 4 1.88697 4H18.2559Z" />
     </svg>
   );
-};
-
-const extractData = (
-  data: string,
-): {
-  account_age: string;
-  previous_threads: number;
-  servers: Array<{
-    name: string;
-    nickname: string;
-    joined: string;
-    roles: Array<string>;
-  }>;
-} => {
-  const [userData, ...rest] = data
-    .split("\n")
-    .filter((c) => c !== "" && c !== "────────────────");
-  if (!userData || !rest) throw "Malformed data";
-
-  const account_age = userData.split("**")[1] || "Unknown";
-
-  const { servers, previous_threads } = rest.reduce(
-    (accum, line) => {
-      if (line.includes("previous")) {
-        return {
-          servers: accum.servers,
-          previous_threads: parseInt(line.split("**")[1] || "0", 10),
-        };
-      } else {
-        const pattern =
-          /\*\*\[([^\]]+)\]\*\* NICKNAME \*\*([^*]+)\*\*, JOINED \*\*([^*]+)\*\* ago, ROLES \*\*([^*]+)\*\*/;
-        const match = line.match(pattern);
-
-        if (!match) {
-          return accum;
-        }
-
-        accum.servers.push({
-          name: match[1] || "",
-          nickname: match[2] || "",
-          joined: match[3] || "",
-          roles: (match[4] || "")
-            .split(", ")
-            .map((role) => (role === "Isaac" ? "Muted" : role.trim())),
-        });
-        return accum;
-      }
-    },
-    {
-      servers: [] as Array<{
-        name: string;
-        nickname: string;
-        joined: string;
-        roles: Array<string>;
-      }>,
-      previous_threads: 0,
-    },
-  );
-
-  return {
-    account_age,
-    previous_threads,
-    servers,
-  };
 };
 
 const messageType = (type_: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9) =>
