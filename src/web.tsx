@@ -133,7 +133,12 @@ app.get("/logs/:id", async (c) => {
   const verbose = params.get("verbose") !== null;
 
   if (c.req.query("new") !== undefined) {
-    return c.html(<ThreadView thread={thread} messages={messages} />);
+    try {
+      return c.html(<ThreadView thread={thread} messages={messages} />);
+    } catch (e) {
+      console.error(e)
+      return c.json({ error: e }, 500)
+    }
   }
 
   // if (simple || verbose) {
