@@ -1,76 +1,13 @@
 import type { Embed } from "discord.js";
 import type { FC } from "hono/jsx";
-import { marked, type TokenizerAndRendererExtension } from "marked";
 import { ThreadMessageType } from "../data/constants";
 import type { Thread as DBThread } from "../data/Thread";
 import type { ThreadMessage as DBThreadMessage } from "../data/ThreadMessage";
 import { useDb } from "../db";
 import { getRegisteredUsername } from "../repositories/registration";
-import { findThreadLogByChannelID } from "../repositories/threads";
+import { convertMarkdown } from "./markdown";
 
 const db = useDb();
-
-const smallHeading: TokenizerAndRendererExtension = {
-  name: "smallHeading",
-  level: "block",
-  start(src) {
-    return src.match(/^-#/)?.index;
-  },
-  tokenizer(src) {
-    const rule = /^-# +(.+?)(?:\n|$)/;
-    const match = rule.exec(src);
-
-    if (match) {
-      const token = {
-        type: "smallHeading",
-        raw: match[0],
-        text: (match[1] || "").trim(),
-        tokens: [],
-      };
-
-      // Process inline tokens (for bold, italic, links, etc.)
-      this.lexer.inline(token.text, token.tokens);
-      return token;
-    }
-  },
-  renderer(token) {
-    const text = this.parser.parseInline(token.tokens || []);
-    return `<h6 class="small-heading">${text}</h6>\n`;
-  },
-};
-
-// Apply the extension
-marked.use({ extensions: [smallHeading] });
-
-const channelsCache: Record<string, { name: string; thread_id: string }> = {};
-
-const convertMarkdown = async (input: string): Promise<string> => {
-  let html = input;
-  const regex = /<#(\d+)>/g;
-  const channelMatches = [...html.matchAll(regex)];
-
-  // Fetch all channel data in parallel
-  const channelPromises = channelMatches.map((match) =>
-    findThreadLogByChannelID(db, match[1] || ""),
-  );
-
-  for (const promise of channelPromises) {
-    const { channel_id, thread_id, name } = await promise;
-    channelsCache[channel_id] = { thread_id, name };
-  }
-
-  // Replace each match with the corresponding result
-  channelMatches.forEach((match) => {
-    const { thread_id, name } = channelsCache[match[1] || ""] || {
-      thread_id: "",
-      name: "",
-    };
-    const replacement = `<a href="${thread_id}">#${name}</a>` || match[0]; // Fallback to original if null/undefined
-    html = html.replace(match[0], replacement);
-  });
-
-  return await marked(html);
-};
 
 const Layout: FC = (props) => {
   return (
@@ -173,7 +110,7 @@ export const Thread: FC<{
 };
 
 const UserMessage: FC<{ msg: CollapsedThreadMessage }> = async ({ msg }) => {
-  const body = (await Promise.all(msg.bodies.map(convertMarkdown))).join('')
+  const body = (await Promise.all(msg.bodies.map((body) => convertMarkdown(db, body)))).join('')
 
   return (
     <li class="msg-row" data-message-type="from-user">
@@ -218,7 +155,7 @@ const Embeds: FC<{ embeds: Array<Embed> }> = ({ embeds }) => {
                   <h5>{field.name}</h5>
                   <div
                     dangerouslySetInnerHTML={{
-                      __html: await convertMarkdown(field.value),
+                      __html: await convertMarkdown(db, field.value),
                     }}
                   ></div>
                 </li>
@@ -246,7 +183,7 @@ const OutgoingMessage: FC<{ msg: CollapsedThreadMessage }> = async ({
     <li class="msg-row" data-message-type="from-user">
       <figure
         class="msg-avatar"
-        style="background-image: url('https://cdn.discordapp.com/avatars/255432387993796618/5c947997c70c1d3db8b9950db924a25a.png?size=256')"
+        style={`background-image: url('/avatar/${msg.user_id}.png')`}
       ></figure>
       <div class="msg-content">
         <div class="msg-header">
@@ -279,35 +216,12 @@ const SystemMessage: FC<{ msg: CollapsedThreadMessage }> = ({ msg }) => {
     >
       <figure
         class="msg-avatar"
-        style="background-image: url('https://cdn.discordapp.com/avatars/255432387993796618/5c947997c70c1d3db8b9950db924a25a.png?size=256')"
+        style="background-image: url('/static/modmail.svg')"
       ></figure>
       <div class="msg-content">
         <div class="msg-header">
           <p data-tooltip={msg.user_id}>
             Overwatch ModMail
-            <MailIcon />
-            <span class="typeBadge">{messageType(msg.message_type)}</span>
-          </p>
-          <time>{msg.created_at.toLocaleString()}</time>
-        </div>
-        <div class="msg-body">
-          {msg.bodies.map((body) => (
-            <p>{body}</p>
-          ))}
-        </div>
-      </div>
-    </li>
-  );
-};
-
-const _ToUser: FC<{ msg: CollapsedThreadMessage }> = ({ msg }) => {
-  return (
-    <li class="msg-row" data-message-type="to-user">
-      <figure class="msg-avatar"></figure>
-      <div class="msg-content">
-        <div class="msg-header">
-          <p data-tooltip={msg.user_id}>
-            {msg.user_name}
             <MailIcon />
             <span class="typeBadge">{messageType(msg.message_type)}</span>
           </p>
@@ -329,13 +243,13 @@ const InternalMessage: FC<{ msg: CollapsedThreadMessage }> = async ({
   const displayName =
     (await getRegisteredUsername(db, msg.user_id)) || msg.user_name;
 
-  const body = (await Promise.all(msg.bodies.map(convertMarkdown))).join('')
+  const body = (await Promise.all(msg.bodies.map((body) => convertMarkdown(db, body)))).join('')
 
   return (
     <li class="msg-row" data-message-type="internal">
       <figure
         class="msg-avatar"
-        style="background-image: url('https://cdn.discordapp.com/guilds/94882524378968064/users/164564849915985922/avatars/5af00b63dec32d3b5f80cf7d2f2a0f0e.png?size=128')"
+        style={`background-image: url('/avatar/${msg.user_id}.png')`}
       ></figure>
       <div class="msg-content">
         <div class="msg-header">

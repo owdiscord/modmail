@@ -29,6 +29,15 @@ body {
   margin: 0;
 }
 
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  margin: 0;
+}
+
 .thread-header {
   margin: 0 auto;
   padding: 2rem 0;
@@ -70,9 +79,7 @@ body {
     gap: 1rem;
     color: var(--color-gray-100);
 
-    &:not([data-message-type="from-user"]):not(
-        [data-message-type="to-user"]
-      ):not([data-message-type="system-to-user"]) {
+    &:not([data-message-type="from-user"]):not([data-message-type="to-user"]):not([data-message-type="system-to-user"]) {
       background: var(--color-gray-900);
     }
   }
@@ -148,7 +155,7 @@ body {
   }
 
   & blockquote {
-    margin: 0;
+    margin: .8rem 0 0;
     padding: 0 16px;
     border-left: 5px solid var(--color-gray-600);
   }
@@ -159,6 +166,20 @@ body {
 
     &:hover {
       text-decoration: underline;
+    }
+  }
+
+  & time {
+    position: relative;
+
+    &:before {
+      opacity: 0;
+      pointer-events: none;
+      content: attr(datetime);
+      position: absolute;
+      top: -100%;
+      left: 50%;
+      transform: translateX(-50%) translateY(-.2rem);
     }
   }
 }

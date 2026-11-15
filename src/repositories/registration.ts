@@ -7,6 +7,7 @@ import { type DbQuery, useDb } from "../db";
 export interface Registration {
   discord_id: string;
   registered_name: string;
+  avatar_hash: string;
   created_at: Date;
   updated_at: Date;
 }
@@ -19,11 +20,12 @@ const cache = createCache<string>(30 * 60 * 1000);
 export async function createUserRegistration(
   db: DbQuery,
   discord_id: string,
+  avatar_hash: string,
   registered_name: string,
 ): Promise<null> {
   await db.mutation`INSERT INTO registered_users
-    (discord_id, registered_name, created_at) VALUES
-    (${discord_id}, ${registered_name}, now()) ON DUPLICATE KEY UPDATE registered_name = ${registered_name}, updated_at = now();`;
+    (discord_id, avatar_hash, registered_name, created_at) VALUES
+    (${discord_id}, ${avatar_hash}, ${registered_name}, now()) ON DUPLICATE KEY UPDATE registered_name = ${registered_name}, avatar_hash = ${avatar_hash}, updated_at = now();`;
 
   return null;
 }
@@ -46,6 +48,14 @@ export async function getUserRegistrationName(
     await db<RegistrationRow>`SELECT registered_name FROM registered_users WHERE discord_id = ${discord_id}`;
 
   return registration?.[0] ? registration[0].registered_name : null;
+}
+
+export async function updateRegisteredUserAvatar(
+  db: DbQuery,
+  discord_id: string,
+  avatar: string,
+) {
+  return await db.mutation`UPDATE registered_users SET avatar_hash = ${avatar} WHERE discord_id = ${discord_id}`;
 }
 
 export async function deleteUserRegistration(db: DbQuery, discord_id: string) {

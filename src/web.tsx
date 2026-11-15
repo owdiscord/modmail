@@ -12,6 +12,9 @@ import { useDb } from "./db";
 import { getMessagesInThread } from "./repositories/threadMessages";
 import { findThreadByID } from "./repositories/threads";
 import { Thread as ThreadView } from "./web/view";
+import { createReadStream, statSync } from 'node:fs'
+import { Readable } from 'node:stream'
+import path from "node:path";
 
 const app = new Hono();
 
@@ -144,6 +147,28 @@ app.get("/logs/:id", async (c) => {
     headers: { "Content-Type": contentType },
   });
 });
+
+app.get("/avatar/:snowflake", (c) => {
+  const param = c.req.param().snowflake as string
+  const snowflake = param.endsWith('.png') ? param.substring(0, param.length - 4) : param
+  try {
+    const filePath = path.join(import.meta.dirname, `../avatars/${snowflake}.png`)
+    console.log(filePath)
+    const stat = statSync(filePath)
+    const nodeStream = createReadStream(filePath)
+
+    // Convert Node.js stream to a Web Standard ReadableStream
+    const webStream = Readable.toWeb(nodeStream) as ReadableStream
+
+    c.header('Content-Type', 'image/png')
+    c.header('Content-Length', stat.size.toString())
+    c.header('Content-Disposition', 'inline')
+
+    return c.body(webStream)
+  } catch (e) {
+    return c.text('Not found', 404)
+  }
+})
 
 app.get("/attachments/:id/:filename", async (c) => {
   const { id, filename } = c.req.param();
