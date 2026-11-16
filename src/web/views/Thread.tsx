@@ -106,39 +106,59 @@ export const Thread: FC<{
   );
 };
 
-const Embeds: FC<{ embeds: Array<Embed> }> = ({ embeds }) => {
-  return (
-    <>
-      {embeds.map((embed) => {
-        return (
-          <div
-            class="msg-embed"
-            style={{ "--embed-color": `#${(embed.color || 0).toString(16)}` }}
-          >
-            {embed.title && <h4>{embed.title}</h4>}
-            {embed.description && <p>desc: {embed.description}</p>}
-            <ul>
-              {embed.fields.map(async (field) => <li data-inline={field.inline}>
-                <h5>{field.name}</h5>
-                <div
-                  dangerouslySetInnerHTML={{
-                    __html: await convertMarkdown(db, field.value)
-                  }}
-                ></div>
-              </li>
-              )}
-            </ul>
-            {embed.footer && (
-              <footer>
-                <p>{embed.footer.text}</p>
-              </footer>
-            )}
-          </div>
-        );
-      })}
-    </>
-  );
-};
+const Embeds: FC<{ embeds: Array<Embed> }> = ({ embeds }) => (
+  <>
+    {embeds.map((embed) =>
+      <div
+        class="msg-embed"
+        style={{ "--embed-color": `#${(embed.color || 0).toString(16)}` }}
+      >
+        {embed.title && <h4>{embed.title}</h4>}
+        {embed.description && <p>desc: {embed.description}</p>}
+        <ul>
+          {embed.fields.map(async (field) => <li data-inline={field.inline}>
+            <h5>{field.name}</h5>
+            <div
+              dangerouslySetInnerHTML={{
+                __html: await convertMarkdown(db, field.value)
+              }}
+            ></div>
+          </li>
+          )}
+        </ul>
+        {embed.footer && (
+          <footer>
+            <p>{embed.footer.text}</p>
+          </footer>
+        )}
+      </div>
+    )}
+  </>
+);
+
+const Attachments = ({ attachments }: PropsWithChildren<{ attachments: string[] }>) => (
+  <>
+    {attachments.map((attachment) => {
+      const isImage = [".png", ".avif", ".svg", ".tif", ".tiff", ".jpg", ".jpeg", ".gif", ".webp"].some(ext => attachment.endsWith(ext))
+      const isVideo = [".mp4", ".m4v", ".mov", ".qt", ".mkv", ".webm", ".avi", ".wmv"].some(ext => attachment.endsWith(ext))
+      const isSound = [".ogg", ".mp3", ".flac", ".aiff", ".wav", "aac"].some(ext => attachment.endsWith(ext))
+
+      if (isImage) {
+        return <a href={attachment} target="_blank"><img src={attachment} alt="Attached image" class="msg-attachment msg-image" /></a>
+      } else if (isVideo) {
+        return <video class="msg-attachment msg-video" controls>
+          <source src={attachment} type={`video/${attachment.split('.')[attachment.split('.').length - 1]}`} />
+        </video>
+      } else if (isSound) {
+        return <audio class="msg-attachment msg-audio" controls src={attachment}>
+          Your browser does not support the audio element.
+        </audio>
+      }
+
+      return <div class="msg-attachment msg-unknown">Unknown attachment format. Carefully, you can <a href={attachment} target="_blank">open the link directly</a></div>
+    })}
+  </>
+);
 
 const MessageRow: FC<{ msg: CollapsedThreadMessage }> = async ({ msg }) => {
   const body = (await Promise.all(msg.bodies.map((body) => convertMarkdown(db, body))) || []).join('')
@@ -215,6 +235,7 @@ const MessageRow: FC<{ msg: CollapsedThreadMessage }> = async ({ msg }) => {
         <div class="msg-body">
           <article dangerouslySetInnerHTML={{ __html: body }} />
           <Embeds embeds={msg.metadata.embeds as Embed[] || []} />
+          <Attachments attachments={msg.attachments} />
         </div>
       </div>
     </li>
