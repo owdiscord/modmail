@@ -82,10 +82,11 @@ app.get("/logs/:id", async (c) => {
 
   if (c.req.query("new") !== undefined) {
     try {
-      return c.html(<ThreadView cssHash={cssHash} thread={thread} messages={messages} />);
+      const html = (await <ThreadView cssHash={cssHash} thread={thread} messages={messages} />)
+      return c.html(html);
     } catch (e) {
       console.error(e)
-      return c.json({ error: e }, 500)
+      return c.json({ error: `${e}` }, 500)
     }
   }
 
