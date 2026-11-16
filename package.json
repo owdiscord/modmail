@@ -9,11 +9,12 @@
 	"scripts": {
 		"test": "tsx --test 'src/**/*.test.ts'",
 		"build": "tsdown",
+		"build:css": "lightningcss --minify --bundle --targets \">= 0.25%\" src/web/style.css -o style.css",
 		"typecheck": "tsc --noEmit",
 		"prestart": "pnpm run build",
 		"start": "node dist/index.mjs",
 		"dev": "NODE_ENV=development tsx src/index.ts",
-		"web": "tsx --watch src/web-node.ts",
+		"web": "tsx --watch src/web/index.tsx",
 		"watch": "NODE_ENV=development tsx --watch src/index.ts",
 		"lint": "biome check ./src",
 		"lint:fix": "biome check --write --unsafe ./src",
@@ -47,6 +48,7 @@
 		"@types/humanize-duration": "^3.27.4",
 		"@types/ini": "^4.1.1",
 		"@types/yargs-parser": "^21.0.3",
+		"lightningcss-cli": "^1.33.0",
 		"tsdown": "^0.23.0",
 		"tsx": "^4.23.13",
 		"typescript": "^7.0.2"

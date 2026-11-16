@@ -1,5 +1,4 @@
 import { execSync } from "node:child_process";
-import { serve } from "@hono/node-server";
 import { version as djsVersion } from "discord.js";
 import { BotError } from "./BotError";
 import bot from "./bot";
@@ -132,5 +131,5 @@ process.on("unhandledRejection", errorHandler);
 
   // Run the webserver
   logger.info(`Starting webserver on :${config.web.port}`);
-  serve(web);
+  web;
 })();

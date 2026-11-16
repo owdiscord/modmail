@@ -15,3 +15,4 @@ secrets.toml
 dist
 avatars/*
 !avatars/default.png
+/style.css

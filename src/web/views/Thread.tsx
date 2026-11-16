@@ -1,38 +1,40 @@
+
 import type { Embed } from "discord.js";
-import type { FC } from "hono/jsx";
-import { ThreadMessageType, ThreadStatus } from "../data/constants";
-import type { Thread as DBThread } from "../data/Thread";
-import type { ThreadMessage as DBThreadMessage } from "../data/ThreadMessage";
-import { useDb } from "../db";
-import { getRegisteredUsername } from "../repositories/registration";
-import { convertMarkdown } from "./markdown";
-import { getUserThreadsClosedCount } from "../repositories/threads";
+import type { FC, PropsWithChildren } from "hono/jsx";
+import { ThreadMessageType, ThreadStatus } from "../../data/constants";
+import type { Thread as DBThread } from "../../data/Thread";
+import type { ThreadMessage as DBThreadMessage } from "../../data/ThreadMessage";
+import { useDb } from "../../db";
+import { getRegisteredUsername } from "../../repositories/registration";
+import { convertMarkdown } from "../markdown";
+import { getUserThreadsClosedCount } from "../../repositories/threads";
 
 const db = useDb();
 
-const Layout: FC = (props) => {
+const Layout = ({ title, cssHash, children }: PropsWithChildren<{ cssHash: string; title: string }>) => {
   return (
     <html lang="en">
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link href="/logs/style.css?v=1794740779" rel="stylesheet" />
+        <link href={`/logs/style.css?v=${cssHash}`} rel="stylesheet" />
         <link rel="icon" href="/static/modmail-dyn.svg" type="image/svg+xml" />
-        <title>{props.title}</title>
+        <title>{title}</title>
       </head>
-      <body>{props.children}</body>
+      <body>{children}</body>
     </html>
   );
 };
 
 export const Thread: FC<{
+  cssHash: string;
   thread: DBThread;
   messages: Array<DBThreadMessage>;
-}> = async ({ thread, messages }) => {
+}> = async ({ cssHash, thread, messages }) => {
   // const user = await bot.users.fetch(thread.user_id);
   if (messages.length === 0)
     return (
-      <Layout title="error">
+      <Layout cssHash={cssHash} title="error">
         <h1>A fatal error has occurred, there are no messages.</h1>
       </Layout>
     );
@@ -44,7 +46,7 @@ export const Thread: FC<{
   const threadNumber = await getUserThreadsClosedCount(db, thread.user_id, thread.created_at)
 
   return (
-    <Layout title={`Thread with ${thread.user_name}`}>
+    <Layout cssHash={cssHash} title={`Thread with ${thread.user_name}`}>
       <header class="thread-header">
         <img
           src="/static/modmail.svg"
@@ -143,7 +145,7 @@ const Embeds: FC<{ embeds: Array<Embed> }> = ({ embeds }) => {
 };
 
 const MessageRow: FC<{ msg: CollapsedThreadMessage }> = async ({ msg }) => {
-  const body = (await Promise.all(msg.bodies.map((body) => convertMarkdown(db, body)))).join('')
+  const body = (await Promise.all(msg.bodies.map((body) => convertMarkdown(db, body))) || []).join('')
   const isSystem = msg.message_type === ThreadMessageType.System || msg.message_type === ThreadMessageType.SystemToUser
   const hasAvatar = msg.message_type === ThreadMessageType.Chat || msg.message_type === ThreadMessageType.ToUser || msg.message_type === ThreadMessageType.Command
   const kind = (() => {
@@ -207,7 +209,7 @@ const MessageRow: FC<{ msg: CollapsedThreadMessage }> = async ({ msg }) => {
           :
           <div class="msg-header" data-role-colour={msg.message_type === ThreadMessageType.Chat ? 'moderator' : msg.role_name.toLowerCase()}>
             <p data-tooltip={msg.user_id}>
-              {hasAvatar ? getRegisteredUsername(db, msg.user_id) : msg.user_name}
+              {hasAvatar ? (await getRegisteredUsername(db, msg.user_id) || msg.user_name) : msg.user_name}
               <Icon />
               <span class="typeBadge">{messageType(msg.message_type)}</span>
             </p>

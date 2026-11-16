@@ -17,6 +17,9 @@ COPY tsconfig.json ./
 COPY src/ ./src/
 RUN pnpm run build
 
+# Build the output CSS
+RUN pnpm run build:css
+
 #
 # --- Runtime stage ----
 #
@@ -33,7 +36,7 @@ RUN pnpm install --frozen-lockfile --prod
 
 # Bring in the compiled JS output and migrations
 COPY --from=builder /app/dist ./
-COPY --from=builder /app/src/web/style.css ./style.css
+COPY --from=builder /app/style.css ./style.css
 COPY static/ ./static
 COPY migrations/ ./migrations
 
