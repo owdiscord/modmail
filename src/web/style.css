@@ -90,6 +90,11 @@ h6 {
     margin: 0;
     font-size: 2rem;
     margin-bottom: 0.5rem;
+
+    & .pronouns {
+      font-size: 1rem;
+      color: var(--color-gray-100);
+    }
   }
 
   & p {
@@ -101,6 +106,7 @@ h6 {
 
 .roles {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: .4rem;
   padding: 0;
@@ -108,29 +114,29 @@ h6 {
   font-size: .8rem;
 
   & .role {
-    --color-role: #99aab5;
+    --color-role: ;
     display: flex;
     align-items: center;
     gap: .4rem;
-    background: color-mix(in srgb, var(--color-role) 15%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-role) 30%, transparent);
+    background: color-mix(in srgb, var(--role-color, #99aab5) 15%, transparent);
+    border: 1px solid color-mix(in srgb, var(--role-color, #99aab5) 30%, transparent);
     padding: .3rem .4rem;
     line-height: 1;
     border-radius: .5rem;
     font-weight: 600;
     color: #fff;
 
-    &[data-role="muted"] {
-      --color-role: var(--color-muted);
+    &[data-role-colour="muted"] {
+      --role-color: var(--color-muted);
     }
 
-    &[data-role="admin"] {
-      --color-role: var(--color-admin);
+    &[data-role-colour="admin"] {
+      --role-color: var(--color-admin);
     }
 
-    &[data-role="moderator"],
-    &[data-role="mod"] {
-      --color-role: var(--color-mod);
+    &[data-role-colour="moderator"],
+    &[data-role-colour="mod"] {
+      --role-color: var(--color-mod);
     }
 
     &:before {
@@ -138,7 +144,7 @@ h6 {
       width: 10px;
       height: 10px;
       border-radius: 100%;
-      background: var(--color-role);
+      background: var(--role-color, #99aab5);
     }
   }
 }
@@ -158,6 +164,10 @@ h6 {
 
     &:not([data-message-type="from-user"]):not([data-message-type="to-user"]):not([data-message-type="system-to-user"]) {
       background: var(--color-gray-900);
+    }
+
+    &[data-message-type="from-user"] svg {
+      color: var(--color-gray-300);
     }
   }
 }

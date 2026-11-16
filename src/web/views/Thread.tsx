@@ -42,6 +42,17 @@ export const Thread: FC<{
   const collapsedMessages = collapseThreadMessages(messages);
   const threadNumber = await getUserThreadsClosedCount(db, thread.user_id, thread.created_at)
 
+  const pronouns = thread.roles
+    .map(text => text.replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, '').toLowerCase().trim())
+    .filter((role) =>
+      ["she/her", "he/him", "they/them", "any pronouns"].some(pronoun => role.toLowerCase().includes(pronoun)))
+  if (pronouns.length === 0) pronouns.push('any/unknown')
+
+  const roles = thread.roles
+    .map(text => text.replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, '').trim())
+    .filter((role) =>
+      ["moderator", "admin", "regular", "veteran", "quinquennial", "decennial", "muted"].some((name) => name.includes(role.toLowerCase())))
+
   return (
     <Layout cssHash={cssHash} title={`Thread with ${thread.user_name}`}>
       <header class="thread-header">
@@ -50,7 +61,7 @@ export const Thread: FC<{
           alt="Modmail Icon"
           width="80px"
         />
-        <h1>Thread with {thread.user_name}</h1>
+        <h1>Thread with {thread.user_name} <span class="pronouns">({pronouns.join(',')})</span></h1>
         <p>
           Thread opened{" "}
           {thread.created_at.toLocaleString("en-US", {
@@ -74,7 +85,7 @@ export const Thread: FC<{
             minute: "2-digit",
           })}</b>.
         </p>
-        <ul class="roles">{thread.roles.map((role: string) => <li class="role" data-role-colour={role.toLowerCase().replace(/\s/g, '-')}>{role}</li>)}</ul>
+        <ul class="roles">{roles.map((role: string) => <li class="role" data-role-colour={role.toLowerCase().replace(/\s/g, '-')}>{role}</li>)}</ul>
       </header>
 
       <main class="thread hide-commands">
