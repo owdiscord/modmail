@@ -80,27 +80,20 @@ app.get("/logs/:id", async (c) => {
   const simple = params.get("simple") !== null;
   const verbose = params.get("verbose") !== null;
 
-  if (c.req.query("new") !== undefined) {
-    try {
-      const html = (await <ThreadView cssHash={cssHash} thread={thread} messages={messages} />)
-      return c.html(html);
-    } catch (e) {
-      console.error(e)
-      return c.json({ error: `${e}` }, 500)
-    }
+  if (c.req.query("old") !== undefined) {
+    const formattedResult = await formatLog(thread, messages, {
+      simple,
+      verbose,
+    });
+
+    const contentType = "text/plain; charset=UTF-8";
+
+    return new Response(formattedResult.content, {
+      headers: { "Content-Type": contentType },
+    });
   }
 
-  // if (simple || verbose) {
-  const formattedResult = await formatLog(thread, messages, {
-    simple,
-    verbose,
-  });
-
-  const contentType = "text/plain; charset=UTF-8";
-
-  return new Response(formattedResult.content, {
-    headers: { "Content-Type": contentType },
-  });
+  return c.html(<ThreadView cssHash={cssHash} thread={thread} messages={messages} />);
 });
 
 app.get("/avatar/:snowflake", (c) => {
