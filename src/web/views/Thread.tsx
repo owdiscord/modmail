@@ -40,9 +40,6 @@ export const Thread: FC<{
     );
 
   const collapsedMessages = collapseThreadMessages(messages);
-
-  // @ts-ignore support legacy role storage
-  const roles = (thread.roles === 'string' ? thread.roles.split(',') : thread.roles).filter(r => r !== '@everyone')
   const threadNumber = await getUserThreadsClosedCount(db, thread.user_id, thread.created_at)
 
   return (
@@ -77,7 +74,7 @@ export const Thread: FC<{
             minute: "2-digit",
           })}</b>.
         </p>
-        <ul class="roles">{roles.map((role: string) => <li class="role" data-role-colour={role.toLowerCase().replace(/\s/g, '-')}>{role}</li>)}</ul>
+        <ul class="roles">{thread.roles.map((role: string) => <li class="role" data-role-colour={role.toLowerCase().replace(/\s/g, '-')}>{role}</li>)}</ul>
       </header>
 
       <main class="thread hide-commands">
@@ -121,16 +118,15 @@ const Embeds: FC<{ embeds: Array<Embed> }> = ({ embeds }) => {
             {embed.title && <h4>{embed.title}</h4>}
             {embed.description && <p>desc: {embed.description}</p>}
             <ul>
-              {embed.fields.map(async (field) => (
-                <li data-inline={field.inline}>
-                  <h5>{field.name}</h5>
-                  <div
-                    dangerouslySetInnerHTML={{
-                      __html: await convertMarkdown(db, field.value),
-                    }}
-                  ></div>
-                </li>
-              ))}
+              {embed.fields.map(async (field) => <li data-inline={field.inline}>
+                <h5>{field.name}</h5>
+                <div
+                  dangerouslySetInnerHTML={{
+                    __html: await convertMarkdown(db, field.value)
+                  }}
+                ></div>
+              </li>
+              )}
             </ul>
             {embed.footer && (
               <footer>

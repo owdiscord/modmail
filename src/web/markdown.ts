@@ -139,8 +139,10 @@ export async function convertMarkdown(
   );
 
   for (const promise of channelPromises) {
-    const { channel_id, thread_id, name } = await promise;
-    channelsCache[channel_id] = { thread_id, name };
+    try {
+      const { channel_id, thread_id, name } = await promise;
+      channelsCache[channel_id] = { thread_id, name };
+    } catch (_) {}
   }
 
   // Replace each match with the corresponding result
