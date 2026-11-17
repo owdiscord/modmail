@@ -118,16 +118,22 @@ export const Thread: FC<{
 };
 
 const Embeds: FC<{ embeds: Array<Embed> }> = ({ embeds }) => (
-  <>
-    {embeds.map((embed) =>
-      <div
+  embeds.map((embed) => {
+    if (embed.video) {
+      return <figure class="msg-video-gif" title={embed.title || "Embedded GIF Video"}>
+        <video controls autoplay muted>
+          <source src={embed.video.url} type={embed.video.content_type || "video/mp4"} />
+        </video>
+      </figure>
+    } else {
+      return <figure
         class="msg-embed"
         style={{ "--embed-color": `#${(embed.color || 0).toString(16)}` }}
       >
         {embed.title && <h4>{embed.title}</h4>}
         {embed.description && <p>desc: {embed.description}</p>}
         <ul>
-          {embed.fields.map(async (field) => <li data-inline={field.inline}>
+          {(embed.fields || []).map(async (field) => <li data-inline={field.inline}>
             <h5>{field.name}</h5>
             <div
               dangerouslySetInnerHTML={{
@@ -142,9 +148,9 @@ const Embeds: FC<{ embeds: Array<Embed> }> = ({ embeds }) => (
             <p>{embed.footer.text}</p>
           </footer>
         )}
-      </div>
-    )}
-  </>
+      </figure>
+    }
+  })
 );
 
 const Attachments = ({ attachments }: PropsWithChildren<{ attachments: string[] }>) => (
