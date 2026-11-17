@@ -80,6 +80,13 @@ app.get("/logs/:id", async (c) => {
   const simple = params.get("simple") !== null;
   const verbose = params.get("verbose") !== null;
 
+  if (c.req.query("debug_json") !== undefined) {
+    return c.json({
+      thread,
+      messages,
+    })
+  }
+
   if (c.req.query("old") !== undefined) {
     const formattedResult = await formatLog(thread, messages, {
       simple,

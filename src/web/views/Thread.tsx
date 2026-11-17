@@ -61,7 +61,7 @@ export const Thread: FC<{
           alt="Modmail Icon"
           width="80px"
         />
-        <h1>Thread with {thread.user_name} <span class="pronouns">({pronouns.join(',')})</span></h1>
+        <h1>Thread with {thread.user_name} <span class="pronouns">({pronouns.join('/')})</span></h1>
         <p>
           Thread opened{" "}
           {thread.created_at.toLocaleString("en-US", {
@@ -245,7 +245,7 @@ const MessageRow: FC<{ msg: CollapsedThreadMessage }> = async ({ msg }) => {
         }
         <div class="msg-body">
           <article dangerouslySetInnerHTML={{ __html: body }} />
-          <Embeds embeds={msg.metadata.embeds as Embed[] || []} />
+          {(msg.metadata && msg.metadata.embeds) && <Embeds embeds={msg.metadata.embeds as Embed[] || []} />}
           <Attachments attachments={msg.attachments} />
         </div>
       </div>
